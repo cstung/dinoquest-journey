@@ -15,6 +15,7 @@ import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TestsIndexRouteImport } from './routes/tests.index'
 import { Route as QuestsIndexRouteImport } from './routes/quests.index'
+import { Route as FamiliesIndexRouteImport } from './routes/families.index'
 import { Route as TestsNewRouteImport } from './routes/tests.new'
 import { Route as QuestsNewRouteImport } from './routes/quests.new'
 import { Route as QuestsQuestIdRouteImport } from './routes/quests.$questId'
@@ -49,6 +50,11 @@ const QuestsIndexRoute = QuestsIndexRouteImport.update({
   path: '/quests/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FamiliesIndexRoute = FamiliesIndexRouteImport.update({
+  id: '/families/',
+  path: '/families/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TestsNewRoute = TestsNewRouteImport.update({
   id: '/tests/new',
   path: '/tests/new',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/quests/$questId': typeof QuestsQuestIdRoute
   '/quests/new': typeof QuestsNewRoute
   '/tests/new': typeof TestsNewRoute
+  '/families/': typeof FamiliesIndexRoute
   '/quests/': typeof QuestsIndexRoute
   '/tests/': typeof TestsIndexRoute
 }
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/quests/$questId': typeof QuestsQuestIdRoute
   '/quests/new': typeof QuestsNewRoute
   '/tests/new': typeof TestsNewRoute
+  '/families': typeof FamiliesIndexRoute
   '/quests': typeof QuestsIndexRoute
   '/tests': typeof TestsIndexRoute
 }
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/quests/$questId': typeof QuestsQuestIdRoute
   '/quests/new': typeof QuestsNewRoute
   '/tests/new': typeof TestsNewRoute
+  '/families/': typeof FamiliesIndexRoute
   '/quests/': typeof QuestsIndexRoute
   '/tests/': typeof TestsIndexRoute
 }
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/quests/$questId'
     | '/quests/new'
     | '/tests/new'
+    | '/families/'
     | '/quests/'
     | '/tests/'
   fileRoutesByTo: FileRoutesByTo
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/quests/$questId'
     | '/quests/new'
     | '/tests/new'
+    | '/families'
     | '/quests'
     | '/tests'
   id:
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
     | '/quests/$questId'
     | '/quests/new'
     | '/tests/new'
+    | '/families/'
     | '/quests/'
     | '/tests/'
   fileRoutesById: FileRoutesById
@@ -143,6 +155,7 @@ export interface RootRouteChildren {
   QuestsQuestIdRoute: typeof QuestsQuestIdRoute
   QuestsNewRoute: typeof QuestsNewRoute
   TestsNewRoute: typeof TestsNewRoute
+  FamiliesIndexRoute: typeof FamiliesIndexRoute
   QuestsIndexRoute: typeof QuestsIndexRoute
   TestsIndexRoute: typeof TestsIndexRoute
 }
@@ -191,6 +204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof QuestsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/families/': {
+      id: '/families/'
+      path: '/families'
+      fullPath: '/families/'
+      preLoaderRoute: typeof FamiliesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tests/new': {
       id: '/tests/new'
       path: '/tests/new'
@@ -223,6 +243,7 @@ const rootRouteChildren: RootRouteChildren = {
   QuestsQuestIdRoute: QuestsQuestIdRoute,
   QuestsNewRoute: QuestsNewRoute,
   TestsNewRoute: TestsNewRoute,
+  FamiliesIndexRoute: FamiliesIndexRoute,
   QuestsIndexRoute: QuestsIndexRoute,
   TestsIndexRoute: TestsIndexRoute,
 }
