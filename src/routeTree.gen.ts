@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as RewardsRouteImport } from './routes/rewards'
 import { Route as PetsRouteImport } from './routes/pets'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
+import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TestsIndexRouteImport } from './routes/tests.index'
 import { Route as QuestsIndexRouteImport } from './routes/quests.index'
@@ -36,6 +37,11 @@ const PetsRoute = PetsRouteImport.update({
 const LeaderboardRoute = LeaderboardRouteImport.update({
   id: '/leaderboard',
   path: '/leaderboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -91,6 +97,7 @@ const FamiliesFamilyIdRoute = FamiliesFamilyIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
   '/leaderboard': typeof LeaderboardRoute
   '/pets': typeof PetsRoute
   '/rewards': typeof RewardsRoute
@@ -106,6 +113,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
   '/leaderboard': typeof LeaderboardRoute
   '/pets': typeof PetsRoute
   '/rewards': typeof RewardsRoute
@@ -122,6 +130,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
   '/leaderboard': typeof LeaderboardRoute
   '/pets': typeof PetsRoute
   '/rewards': typeof RewardsRoute
@@ -139,6 +148,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/calendar'
     | '/leaderboard'
     | '/pets'
     | '/rewards'
@@ -154,6 +164,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/calendar'
     | '/leaderboard'
     | '/pets'
     | '/rewards'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/calendar'
     | '/leaderboard'
     | '/pets'
     | '/rewards'
@@ -185,6 +197,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CalendarRoute: typeof CalendarRoute
   LeaderboardRoute: typeof LeaderboardRoute
   PetsRoute: typeof PetsRoute
   RewardsRoute: typeof RewardsRoute
@@ -220,6 +233,13 @@ declare module '@tanstack/react-router' {
       path: '/leaderboard'
       fullPath: '/leaderboard'
       preLoaderRoute: typeof LeaderboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -297,6 +317,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CalendarRoute: CalendarRoute,
   LeaderboardRoute: LeaderboardRoute,
   PetsRoute: PetsRoute,
   RewardsRoute: RewardsRoute,
