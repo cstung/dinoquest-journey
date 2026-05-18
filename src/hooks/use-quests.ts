@@ -100,3 +100,38 @@ export function useCompleteQuest(familyId: number | null, questId: number | null
   });
 }
 
+export function useUpdateQuest(familyId: number | null, questId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      title?: string;
+      description?: string | null;
+      category?: string;
+      difficulty?: string;
+      xpReward?: number;
+      dueDate?: string | null;
+      isRecurring?: boolean;
+    }) =>
+      apiRequest<QuestItem>(`/api/families/${familyId}/quests/${questId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quests", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["quest", familyId, questId] });
+    },
+  });
+}
+
+export function useDeleteQuest(familyId: number | null, questId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<void>(`/api/families/${familyId}/quests/${questId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quests", familyId] });
+    },
+  });
+}

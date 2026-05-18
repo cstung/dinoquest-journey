@@ -84,3 +84,11 @@ Defined in `package.json`:
 - **Authentication:** Uses secure HTTP-only cookie (`access_token`) for API requests and short-lived tokens for WebSocket connections.
 - **API Routing:** Backend routes are family-scoped (e.g., `/api/families/{family_id}/quests`). The frontend manages the active family state and dynamically injects the `activeFamilyId` into requests.
 - **JSON Formatting:** API responses and payloads use `camelCase` for frontend consumption, mapped to `snake_case` in the backend.
+
+## Reward Thumbnail Specs
+- **Card ratio:** Square (`1:1`) to match the existing reward card media block.
+- **Recommended resolution:** `512 x 512 px` (best balance for sharpness and payload size in current UI).
+- **Preferred file type:** `WebP` (smaller files at similar visual quality).
+- **Accepted types:** Any browser image type (`image/*`) from upload input.
+- **Upload limit in app:** `2 MB` per image (client-side validation).
+- **API value format:** Stored as image data URL or `http(s)` URL.

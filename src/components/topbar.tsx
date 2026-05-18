@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Bell, ChevronDown, Check, Plus, LogIn } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useFamilyStore, useAuthStore } from "@/store";
@@ -10,9 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { notifications as initialNotifs } from "@/data/mock";
 import { cn } from "@/lib/utils";
-import { useFamilies } from "@/hooks/use-families";
+import { useFamilies, useFamilyActivity } from "@/hooks/use-families";
 import { apiRequest } from "@/lib/api";
 
 function DinoLogo() {
@@ -41,7 +40,10 @@ function FamilySwitcher() {
 
   if (families.length === 0) {
     return (
-      <Link to="/families" className="rounded-2xl border-2 border-border bg-card px-3 py-2 text-sm font-bold">
+      <Link
+        to="/families"
+        className="rounded-2xl border-2 border-border bg-card px-3 py-2 text-sm font-bold"
+      >
         Select Family
       </Link>
     );
@@ -91,57 +93,54 @@ function FamilySwitcher() {
 }
 
 function NotificationDrawer() {
-  const [notifs, setNotifs] = useState(initialNotifs);
-  const unread = notifs.filter((n) => n.unread).length;
+  const activeFamilyId = useFamilyStore((s) => s.activeFamilyId);
+  const { data, isLoading } = useFamilyActivity(activeFamilyId, "activity", !!activeFamilyId);
+  const events = data?.items ?? [];
 
   return (
     <Sheet>
       <SheetTrigger asChild>
         <button className="relative size-10 rounded-2xl border-2 border-border bg-card hover:bg-secondary/50 grid place-items-center transition-colors">
           <Bell className="size-5" strokeWidth={2.5} />
-          {unread > 0 && (
-            <span className="absolute -top-1 -right-1 size-5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-extrabold grid place-items-center">
-              {unread}
-            </span>
-          )}
         </button>
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-md">
         <SheetHeader className="flex flex-row items-center justify-between">
           <SheetTitle className="font-display text-2xl">Notifications</SheetTitle>
-          <button
-            onClick={() => setNotifs(notifs.map((n) => ({ ...n, unread: false })))}
-            className="text-xs font-bold text-primary hover:underline"
-          >
-            Mark all as read
-          </button>
         </SheetHeader>
         <div className="mt-4 space-y-2 overflow-y-auto px-4 pb-6">
-          {notifs.length === 0 ? (
+          {isLoading ? (
+            <div className="text-center py-12 text-muted-foreground">Loading notifications...</div>
+          ) : events.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">No notifications yet</div>
           ) : (
-            notifs.map((n) => (
+            events.map((event) => (
               <div
-                key={n.id}
+                key={event.id}
                 className={cn(
                   "rounded-2xl border-2 p-3 flex gap-3 transition-colors",
-                  n.unread ? "bg-primary-light/40 border-primary/20" : "bg-card border-border"
+                  "bg-card border-border",
                 )}
               >
                 <div className="size-10 shrink-0 rounded-xl bg-card grid place-items-center text-lg">
-                  {n.type === "quest" && "⚔️"}
-                  {n.type === "test" && "📝"}
-                  {n.type === "xp" && "⭐"}
-                  {n.type === "achievement" && "🏆"}
-                  {n.type === "family" && "👨‍👩‍👧"}
+                  {event.eventType.includes("quest") && "⚔️"}
+                  {event.eventType.includes("test") && "📝"}
+                  {event.eventType.includes("xp") && "⭐"}
+                  {event.eventType.includes("reward") && "🎁"}
+                  {!event.eventType.includes("quest") &&
+                    !event.eventType.includes("test") &&
+                    !event.eventType.includes("xp") &&
+                    !event.eventType.includes("reward") &&
+                    "📣"}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-bold text-sm">{n.title}</p>
-                    {n.unread && <span className="size-2 rounded-full bg-primary shrink-0" />}
+                    <p className="font-bold text-sm">{event.eventType.replaceAll("_", " ")}</p>
                   </div>
-                  <p className="text-sm text-muted-foreground">{n.description}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{n.time}</p>
+                  <p className="text-sm text-muted-foreground">{event.username ?? "System"}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {new Date(event.createdAt).toLocaleString()}
+                  </p>
                 </div>
               </div>
             ))

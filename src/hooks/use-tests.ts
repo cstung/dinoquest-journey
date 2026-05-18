@@ -78,9 +78,32 @@ export interface TestSubmitResult {
   level: number;
 }
 
+export interface TestReopenRequestItem {
+  id: number;
+  testId: number;
+  attemptId: number;
+  requestedBy: number;
+  status: "pending" | "approved" | "rejected";
+  reason: string | null;
+  requestedAt: string;
+  resolvedAt: string | null;
+  resolvedBy: number | null;
+}
+
+export interface TestReopenResolveResult {
+  request: TestReopenRequestItem;
+  assignmentStatus: "pending" | "completed";
+  xpDelta: number;
+  totalXp: number;
+  level: number;
+}
+
 export function useTests(
   familyId: number | null,
-  options?: { search?: string; status?: "all" | "draft" | "published" | "completed" | "reopen_requested" },
+  options?: {
+    search?: string;
+    status?: "all" | "draft" | "published" | "completed" | "reopen_requested";
+  },
 ) {
   return useQuery({
     queryKey: ["tests", familyId, options?.search ?? "", options?.status ?? "all"],
@@ -143,7 +166,10 @@ export function useStartTest(familyId: number | null, testId: number | null) {
 export function useSubmitTest(familyId: number | null, testId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { attemptId: number; answers: Array<{ questionId: number; selectedOption: number }> }) =>
+    mutationFn: (body: {
+      attemptId: number;
+      answers: Array<{ questionId: number; selectedOption: number }>;
+    }) =>
       apiRequest<TestSubmitResult>(`/api/families/${familyId}/tests/${testId}/submit`, {
         method: "POST",
         body: JSON.stringify(body),
@@ -158,12 +184,49 @@ export function useRequestReopen(familyId: number | null, testId: number | null)
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body?: { reason?: string }) =>
-      apiRequest<{ id: number; status: string }>(`/api/families/${familyId}/tests/${testId}/reopen-request`, {
-        method: "POST",
-        body: JSON.stringify(body ?? {}),
-      }),
+      apiRequest<{ id: number; status: string }>(
+        `/api/families/${familyId}/tests/${testId}/reopen-request`,
+        {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tests", familyId] });
+    },
+  });
+}
+
+export function useReopenRequests(
+  familyId: number | null,
+  testId: number | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["test-reopen-requests", familyId, testId],
+    queryFn: () =>
+      apiRequest<TestReopenRequestItem[]>(
+        `/api/families/${familyId}/tests/${testId}/reopen-requests?status=pending`,
+      ),
+    enabled: !!familyId && !!testId && enabled,
+  });
+}
+
+export function useResolveReopenRequest(familyId: number | null, testId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { requestId: number; decision: "approve" | "reject" }) =>
+      apiRequest<TestReopenResolveResult>(
+        `/api/families/${familyId}/tests/${testId}/reopen-requests/${body.requestId}/resolve`,
+        {
+          method: "POST",
+          body: JSON.stringify({ decision: body.decision }),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tests", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["test-reopen-requests", familyId, testId] });
+      queryClient.invalidateQueries({ queryKey: ["leaderboard", familyId] });
     },
   });
 }

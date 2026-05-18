@@ -55,9 +55,14 @@ function LoginPage() {
           <h1 className="text-4xl text-primary-dark">DinoQuest</h1>
           <p className="text-muted-foreground font-bold">Learn. Quest. Level up.</p>
         </div>
-        <form onSubmit={submit} className="rounded-3xl bg-card border-2 border-border p-6 space-y-4 card-pop">
+        <form
+          onSubmit={submit}
+          className="rounded-3xl bg-card border-2 border-border p-6 space-y-4 card-pop"
+        >
           <label className="block space-y-1.5">
-            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Username</span>
+            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              Username
+            </span>
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -65,7 +70,9 @@ function LoginPage() {
             />
           </label>
           <label className="block space-y-1.5">
-            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Password</span>
+            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              Password
+            </span>
             <input
               type="password"
               value={password}
@@ -81,7 +88,10 @@ function LoginPage() {
             {loading ? "Logging in..." : "Log In"}
           </button>
           <p className="text-center text-sm text-muted-foreground">
-            No account? <Link to="/register" className="text-primary font-bold hover:underline">Register</Link>
+            No account?{" "}
+            <Link to="/register" className="text-primary font-bold hover:underline">
+              Register
+            </Link>
           </p>
         </form>
       </div>

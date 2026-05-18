@@ -46,6 +46,7 @@ async def create_reward(
         created_by=parent_member.user_id,
         title=body.title,
         description=body.description,
+        thumbnail_url=body.thumbnail_url,
         xp_cost=body.xp_cost,
         is_active=True,
     )
@@ -87,13 +88,15 @@ async def update_reward(
     if not item:
         raise HTTPException(status_code=404, detail="Reward not found")
 
-    if body.title is not None:
+    if "title" in body.model_fields_set and body.title is not None:
         item.title = body.title
-    if body.description is not None:
+    if "description" in body.model_fields_set:
         item.description = body.description
-    if body.xp_cost is not None:
+    if "thumbnail_url" in body.model_fields_set:
+        item.thumbnail_url = body.thumbnail_url
+    if "xp_cost" in body.model_fields_set and body.xp_cost is not None:
         item.xp_cost = body.xp_cost
-    if body.is_active is not None:
+    if "is_active" in body.model_fields_set and body.is_active is not None:
         item.is_active = body.is_active
 
     db.add(

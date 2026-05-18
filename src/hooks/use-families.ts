@@ -164,3 +164,83 @@ export function useUpdateFamily(familyId: number | null) {
   });
 }
 
+export function useDeleteFamily(familyId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<void>(`/api/families/${familyId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["families"] });
+      queryClient.invalidateQueries({ queryKey: ["family", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-members", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-invites", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-join-requests", familyId] });
+    },
+  });
+}
+
+export function useRevokeInvite(familyId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (inviteId: number) =>
+      apiRequest<void>(`/api/families/${familyId}/invites/${inviteId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["family-invites", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-activity", "activity", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-activity", "audit", familyId] });
+    },
+  });
+}
+
+export function useResolveJoinRequest(familyId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { joinRequestId: number; status: "approved" | "rejected" }) =>
+      apiRequest<JoinRequestItem>(`/api/families/${familyId}/join-requests/${body.joinRequestId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: body.status }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["family-join-requests", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-members", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["families"] });
+    },
+  });
+}
+
+export function useUpdateMemberRole(familyId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { userId: number; role: "parent" | "child" }) =>
+      apiRequest<Member>(`/api/families/${familyId}/members/${body.userId}/role`, {
+        method: "PATCH",
+        body: JSON.stringify({ role: body.role }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["family-members", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-activity", "audit", familyId] });
+    },
+  });
+}
+
+export function useRemoveMember(familyId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: number) =>
+      apiRequest<void>(`/api/families/${familyId}/members/${userId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["family-members", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["families"] });
+      queryClient.invalidateQueries({ queryKey: ["family-activity", "activity", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-activity", "audit", familyId] });
+    },
+  });
+}

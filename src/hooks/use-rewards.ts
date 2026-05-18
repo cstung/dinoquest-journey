@@ -5,6 +5,7 @@ export interface RewardItem {
   id: number;
   title: string;
   description: string | null;
+  thumbnailUrl: string | null;
   xpCost: number;
   isActive: boolean;
   createdAt: string;
@@ -27,12 +28,18 @@ export interface RewardClaimItem {
 export function useRewards(familyId: number | null, includeInactive: boolean) {
   return useQuery({
     queryKey: ["rewards", familyId, includeInactive],
-    queryFn: () => apiRequest<RewardItem[]>(`/api/families/${familyId}/rewards?includeInactive=${includeInactive}`),
+    queryFn: () =>
+      apiRequest<RewardItem[]>(
+        `/api/families/${familyId}/rewards?includeInactive=${includeInactive}`,
+      ),
     enabled: !!familyId,
   });
 }
 
-export function useRewardClaims(familyId: number | null, status?: "pending" | "approved" | "rejected") {
+export function useRewardClaims(
+  familyId: number | null,
+  status?: "pending" | "approved" | "rejected",
+) {
   return useQuery({
     queryKey: ["reward-claims", familyId, status ?? "all"],
     queryFn: () =>
@@ -46,7 +53,12 @@ export function useRewardClaims(familyId: number | null, status?: "pending" | "a
 export function useCreateReward(familyId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { title: string; description?: string | null; xpCost: number }) =>
+    mutationFn: (body: {
+      title: string;
+      description?: string | null;
+      thumbnailUrl?: string | null;
+      xpCost: number;
+    }) =>
       apiRequest<RewardItem>(`/api/families/${familyId}/rewards`, {
         method: "POST",
         body: JSON.stringify(body),
@@ -60,7 +72,13 @@ export function useCreateReward(familyId: number | null) {
 export function useUpdateReward(familyId: number | null, rewardId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { title?: string; description?: string | null; xpCost?: number; isActive?: boolean }) =>
+    mutationFn: (body: {
+      title?: string;
+      description?: string | null;
+      thumbnailUrl?: string | null;
+      xpCost?: number;
+      isActive?: boolean;
+    }) =>
       apiRequest<RewardItem>(`/api/families/${familyId}/rewards/${rewardId}`, {
         method: "PATCH",
         body: JSON.stringify(body),

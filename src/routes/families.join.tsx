@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, QrCode, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useJoinFamily } from "@/hooks/use-families";
@@ -13,6 +13,16 @@ function JoinFamily() {
   const [qrToken, setQrToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const joinFamily = useJoinFamily();
+  const autoJoinTriggered = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || autoJoinTriggered.current) return;
+    const token = new URLSearchParams(window.location.search).get("token");
+    if (!token) return;
+    autoJoinTriggered.current = true;
+    setTab("qr");
+    setQrToken(token);
+  }, []);
 
   const joinByCode = async () => {
     setError(null);
@@ -34,9 +44,21 @@ function JoinFamily() {
     }
   };
 
+  useEffect(() => {
+    if (!qrToken.trim()) return;
+    if (typeof window === "undefined") return;
+    const token = new URLSearchParams(window.location.search).get("token");
+    if (!token || token !== qrToken.trim()) return;
+    joinByQrToken();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrToken]);
+
   return (
     <div className="max-w-md mx-auto space-y-6">
-      <Link to="/families" className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground">
+      <Link
+        to="/families"
+        className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground"
+      >
         <ArrowLeft className="size-4" /> Families
       </Link>
       <h1 className="text-3xl">Join a Family</h1>
@@ -65,7 +87,9 @@ function JoinFamily() {
       <div className="rounded-3xl bg-card border-2 border-border p-6">
         {tab === "code" ? (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Ask a family parent for the 6-digit invite code.</p>
+            <p className="text-sm text-muted-foreground">
+              Ask a family parent for the 6-digit invite code.
+            </p>
             <input
               value={code}
               onChange={(e) => setCode(e.target.value)}
@@ -103,4 +127,3 @@ function JoinFamily() {
     </div>
   );
 }
-

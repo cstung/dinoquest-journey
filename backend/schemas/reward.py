@@ -7,9 +7,27 @@ from pydantic import Field, field_validator
 from backend.base_schema import APIModel
 
 
+def _normalize_thumbnail_url(value: str | None) -> str | None:
+    if value is None:
+        return value
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if not (
+        cleaned.startswith("data:image/")
+        or cleaned.startswith("http://")
+        or cleaned.startswith("https://")
+    ):
+        raise ValueError("thumbnailUrl must be an image data URL or http(s) URL")
+    if len(cleaned) > 3_000_000:
+        raise ValueError("thumbnailUrl is too large")
+    return cleaned
+
+
 class RewardCreate(APIModel):
     title: str
     description: str | None = None
+    thumbnail_url: str | None = None
     xp_cost: int = Field(ge=1, le=100000)
 
     @field_validator("title")
@@ -20,10 +38,16 @@ class RewardCreate(APIModel):
             raise ValueError("Reward title is required")
         return cleaned
 
+    @field_validator("thumbnail_url")
+    @classmethod
+    def validate_thumbnail_url(cls, value: str | None) -> str | None:
+        return _normalize_thumbnail_url(value)
+
 
 class RewardUpdate(APIModel):
     title: str | None = None
     description: str | None = None
+    thumbnail_url: str | None = None
     xp_cost: int | None = Field(default=None, ge=1, le=100000)
     is_active: bool | None = None
 
@@ -37,11 +61,17 @@ class RewardUpdate(APIModel):
             raise ValueError("Reward title cannot be empty")
         return cleaned
 
+    @field_validator("thumbnail_url")
+    @classmethod
+    def validate_update_thumbnail_url(cls, value: str | None) -> str | None:
+        return _normalize_thumbnail_url(value)
+
 
 class RewardOut(APIModel):
     id: int
     title: str
     description: str | None
+    thumbnail_url: str | None
     xp_cost: int
     is_active: bool
     created_at: datetime

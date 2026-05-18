@@ -623,6 +623,44 @@ async def create_reopen_request(
     )
 
 
+@router.get("/{family_id}/tests/{test_id}/reopen-requests", response_model=list[TestReopenRequestOut])
+async def list_reopen_requests(
+    test_id: int,
+    status_filter: str | None = Query(default=None, alias="status"),
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> list[TestReopenRequestOut]:
+    await _validate_test_access(test_id=test_id, membership=parent_member, db=db)
+
+    stmt = (
+        select(TestReopenRequest, TestAttempt, TestAssignment)
+        .join(TestAttempt, TestAttempt.id == TestReopenRequest.attempt_id)
+        .join(TestAssignment, TestAssignment.id == TestAttempt.assignment_id)
+        .where(
+            TestAssignment.test_id == test_id,
+            TestAssignment.family_id == parent_member.family_id,
+        )
+    )
+    if status_filter in {"pending", "approved", "rejected"}:
+        stmt = stmt.where(TestReopenRequest.status == status_filter)
+
+    rows = await db.execute(stmt.order_by(TestReopenRequest.requested_at.desc(), TestReopenRequest.id.desc()))
+    return [
+        TestReopenRequestOut(
+            id=reopen.id,
+            test_id=test_id,
+            attempt_id=attempt.id,
+            requested_by=reopen.requested_by,
+            status=reopen.status,
+            reason=reopen.reason,
+            requested_at=reopen.requested_at,
+            resolved_at=reopen.resolved_at,
+            resolved_by=reopen.resolved_by,
+        )
+        for reopen, attempt, _ in rows.all()
+    ]
+
+
 @router.post("/{family_id}/tests/{test_id}/reopen-requests/{request_id}/resolve", response_model=TestReopenResolveOut)
 async def resolve_reopen_request(
     test_id: int,

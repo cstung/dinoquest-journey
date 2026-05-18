@@ -4,6 +4,8 @@ import { AlertCircle, Clock, Play, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFamilyStore } from "@/store";
 import {
+  useReopenRequests,
+  useResolveReopenRequest,
   useRequestReopen,
   useStartTest,
   useSubmitTest,
@@ -21,14 +23,18 @@ function TestsPage() {
   const [tab, setTab] = useState<"all" | "draft" | "published" | "completed">("all");
   const [search, setSearch] = useState("");
   const { data, isLoading, error } = useTests(familyId, { status: tab, search });
-  const tests = data?.items ?? [];
+  const tests = useMemo(() => data?.items ?? [], [data?.items]);
   const reopenCount = useMemo(
     () => tests.reduce((acc, item) => acc + (item.status === "reopen_requested" ? 1 : 0), 0),
     [tests],
   );
 
   if (!familyId) {
-    return <div className="py-10 text-sm text-muted-foreground">Select a family first to view tests.</div>;
+    return (
+      <div className="py-10 text-sm text-muted-foreground">
+        Select a family first to view tests.
+      </div>
+    );
   }
 
   if (isLoading) {
@@ -79,7 +85,9 @@ function TestsPage() {
             onClick={() => setTab(t as typeof tab)}
             className={cn(
               "px-4 py-2.5 font-display font-extrabold uppercase text-sm tracking-wide border-b-4 -mb-0.5 whitespace-nowrap transition-colors",
-              tab === t ? "border-info text-info" : "border-transparent text-muted-foreground hover:text-foreground",
+              tab === t
+                ? "border-info text-info"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {t}
@@ -103,13 +111,27 @@ function TestsPage() {
   );
 }
 
-function TestCard({ test, familyId, isParent }: { test: TestListItem; familyId: number; isParent: boolean }) {
+function TestCard({
+  test,
+  familyId,
+  isParent,
+}: {
+  test: TestListItem;
+  familyId: number;
+  isParent: boolean;
+}) {
   const [attempt, setAttempt] = useState<TestAttemptStart | null>(null);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [message, setMessage] = useState<string | null>(null);
   const startMutation = useStartTest(familyId, test.id);
   const submitMutation = useSubmitTest(familyId, test.id);
   const reopenMutation = useRequestReopen(familyId, test.id);
+  const reopenRequestsQuery = useReopenRequests(
+    familyId,
+    test.id,
+    isParent && test.reopenPendingCount > 0,
+  );
+  const resolveReopenMutation = useResolveReopenRequest(familyId, test.id);
 
   const openAttempt = async () => {
     setMessage(null);
@@ -152,14 +174,34 @@ function TestCard({ test, familyId, isParent }: { test: TestListItem; familyId: 
     }
   };
 
+  const resolveReopen = async (requestId: number, decision: "approve" | "reject") => {
+    setMessage(null);
+    try {
+      const result = await resolveReopenMutation.mutateAsync({ requestId, decision });
+      setMessage(
+        decision === "approve"
+          ? `Reopen approved (XP delta ${result.xpDelta}).`
+          : "Reopen request rejected.",
+      );
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
+  };
+
   return (
     <div className="rounded-2xl bg-card border-2 border-border p-4 card-pop flex flex-col gap-4">
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative aspect-video sm:w-64 shrink-0 rounded-xl overflow-hidden bg-muted">
           {test.thumbnailUrl ? (
-            <img src={test.thumbnailUrl} alt={test.title} className="absolute inset-0 size-full object-cover" />
+            <img
+              src={test.thumbnailUrl}
+              alt={test.title}
+              className="absolute inset-0 size-full object-cover"
+            />
           ) : (
-            <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">No thumbnail</div>
+            <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
+              No thumbnail
+            </div>
           )}
           <div className="absolute inset-0 bg-black/30 grid place-items-center opacity-0 hover:opacity-100 transition-opacity">
             <div className="size-12 rounded-full bg-info text-info-foreground grid place-items-center">
@@ -202,9 +244,9 @@ function TestCard({ test, familyId, isParent }: { test: TestListItem; familyId: 
             <div className="flex items-center gap-3">
               <span className="text-sm font-extrabold text-warning">+{test.maxXp} XP</span>
               {isParent ? (
-                <button className="rounded-xl bg-info text-info-foreground font-display font-extrabold uppercase text-xs px-3 py-2">
-                  View Report
-                </button>
+                <span className="rounded-xl bg-info/15 text-info font-display font-extrabold uppercase text-xs px-3 py-2">
+                  Parent View
+                </span>
               ) : (
                 <div className="flex gap-2">
                   {test.status === "completed" ? (
@@ -233,6 +275,47 @@ function TestCard({ test, familyId, isParent }: { test: TestListItem; familyId: 
 
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
+      {isParent && (reopenRequestsQuery.data?.length ?? 0) > 0 && (
+        <div className="rounded-2xl border-2 border-border p-4 bg-background space-y-3">
+          <h4 className="font-display font-extrabold text-base">Pending Reopen Requests</h4>
+          {(reopenRequestsQuery.data ?? []).map((req) => {
+            const member = test.assignedMembers.find((m) => m.userId === req.requestedBy);
+            return (
+              <div
+                key={req.id}
+                className="rounded-xl border border-border p-3 flex items-center gap-3 flex-wrap"
+              >
+                <div className="flex-1 min-w-[220px]">
+                  <p className="font-bold text-sm">
+                    {member?.username ?? `User ${req.requestedBy}`}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Requested {new Date(req.requestedAt).toLocaleString()}
+                  </p>
+                  {req.reason && <p className="text-xs text-muted-foreground mt-1">{req.reason}</p>}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => resolveReopen(req.id, "approve")}
+                    disabled={resolveReopenMutation.isPending}
+                    className="rounded-lg bg-primary text-primary-foreground text-xs font-extrabold uppercase px-3 py-2"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => resolveReopen(req.id, "reject")}
+                    disabled={resolveReopenMutation.isPending}
+                    className="rounded-lg bg-secondary text-xs font-extrabold uppercase px-3 py-2"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {attempt && (
         <div className="rounded-2xl border-2 border-border p-4 bg-background space-y-4">
           <h4 className="font-display font-extrabold text-lg">Attempt: {attempt.title}</h4>
@@ -243,7 +326,10 @@ function TestCard({ test, familyId, isParent }: { test: TestListItem; familyId: 
               </p>
               <div className="grid sm:grid-cols-2 gap-2">
                 {q.options.map((option, oi) => (
-                  <label key={oi} className="flex items-center gap-2 rounded-xl border-2 border-border px-3 py-2">
+                  <label
+                    key={oi}
+                    className="flex items-center gap-2 rounded-xl border-2 border-border px-3 py-2"
+                  >
                     <input
                       type="radio"
                       name={`attempt-${attempt.attemptId}-q-${q.id}`}
@@ -292,7 +378,12 @@ function StatusBadge({ status }: { status: string }) {
     reopen_requested: "Reopen Requested",
   };
   return (
-    <span className={cn("text-[10px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-md", map[status])}>
+    <span
+      className={cn(
+        "text-[10px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-md",
+        map[status],
+      )}
+    >
       {label[status] ?? status}
     </span>
   );

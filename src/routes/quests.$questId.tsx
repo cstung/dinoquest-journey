@@ -1,19 +1,47 @@
-import { createFileRoute, Link, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useFamilyStore } from "@/store";
-import { useCompleteQuest, useQuestDetail } from "@/hooks/use-quests";
+import {
+  useCompleteQuest,
+  useDeleteQuest,
+  useQuestDetail,
+  useUpdateQuest,
+} from "@/hooks/use-quests";
 import { ArrowLeft, Calendar, Award, Zap, Repeat, User } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/quests/$questId")({ component: QuestDetail });
 
 function QuestDetail() {
+  const nav = useNavigate();
   const { questId } = useParams({ from: "/quests/$questId" });
   const familyId = useFamilyStore((s) => s.activeFamilyId);
   const role = useFamilyStore((s) => s.activeFamilyRole);
   const questIdNum = Number(questId);
   const query = useQuestDetail(familyId, questIdNum);
   const completeMutation = useCompleteQuest(familyId, questIdNum);
+  const updateMutation = useUpdateQuest(familyId, questIdNum);
+  const deleteMutation = useDeleteQuest(familyId, questIdNum);
   const [completeMessage, setCompleteMessage] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("Daily");
+  const [difficulty, setDifficulty] = useState("Easy");
+  const [xpReward, setXpReward] = useState(10);
+  const [dueDate, setDueDate] = useState("");
+  const [isRecurring, setIsRecurring] = useState(false);
+  const quest = query.data;
+
+  useEffect(() => {
+    if (!quest) return;
+    setTitle(quest.title);
+    setDescription(quest.description ?? "");
+    setCategory(quest.category);
+    setDifficulty(quest.difficulty);
+    setXpReward(quest.xpReward);
+    setDueDate(quest.dueDate ? new Date(quest.dueDate).toISOString().slice(0, 10) : "");
+    setIsRecurring(quest.isRecurring);
+  }, [quest]);
 
   if (!familyId) {
     return <div className="py-10 text-sm text-muted-foreground">Select a family first.</div>;
@@ -33,9 +61,8 @@ function QuestDetail() {
       </div>
     );
   }
-
-  const quest = query.data;
   const canComplete = role === "child" && quest.status !== "completed";
+  const canManage = role === "parent";
 
   const onComplete = async () => {
     setCompleteMessage(null);
@@ -48,9 +75,42 @@ function QuestDetail() {
     }
   };
 
+  const onSave = async () => {
+    setCompleteMessage(null);
+    try {
+      await updateMutation.mutateAsync({
+        title,
+        description: description || null,
+        category,
+        difficulty,
+        xpReward,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        isRecurring,
+      });
+      await query.refetch();
+      setEditMode(false);
+      setCompleteMessage("Quest updated.");
+    } catch (err) {
+      setCompleteMessage((err as Error).message);
+    }
+  };
+
+  const onDelete = async () => {
+    setCompleteMessage(null);
+    try {
+      await deleteMutation.mutateAsync();
+      nav({ to: "/quests" });
+    } catch (err) {
+      setCompleteMessage((err as Error).message);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <Link to="/quests" className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground hover:text-foreground">
+      <Link
+        to="/quests"
+        className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground hover:text-foreground"
+      >
         <ArrowLeft className="size-4" /> Back to Quests
       </Link>
 
@@ -59,8 +119,84 @@ function QuestDetail() {
           <span className="inline-block text-xs font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-md bg-primary/15 text-primary-dark">
             {quest.category}
           </span>
-          <h1 className="text-4xl">{quest.title}</h1>
-          <p className="text-lg text-muted-foreground leading-relaxed">{quest.description}</p>
+          {editMode ? (
+            <div className="rounded-2xl border-2 border-border bg-card p-4 space-y-3">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+              />
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+              />
+              <div className="grid sm:grid-cols-2 gap-2">
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+                >
+                  <option>Daily</option>
+                  <option>Learning</option>
+                  <option>Creative</option>
+                  <option>Epic</option>
+                </select>
+                <select
+                  value={difficulty}
+                  onChange={(e) => setDifficulty(e.target.value)}
+                  className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+                >
+                  <option>Easy</option>
+                  <option>Medium</option>
+                  <option>Hard</option>
+                  <option>Epic</option>
+                </select>
+                <input
+                  type="number"
+                  value={xpReward}
+                  min={1}
+                  onChange={(e) => setXpReward(Number(e.target.value))}
+                  className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+                />
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm font-bold">
+                <input
+                  type="checkbox"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                />
+                Recurring
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={onSave}
+                  disabled={updateMutation.isPending}
+                  className="rounded-xl bg-primary text-primary-foreground text-xs font-extrabold uppercase px-3 py-2"
+                >
+                  {updateMutation.isPending ? "Saving..." : "Save"}
+                </button>
+                <button
+                  onClick={() => setEditMode(false)}
+                  className="rounded-xl bg-secondary text-xs font-extrabold uppercase px-3 py-2"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h1 className="text-4xl">{quest.title}</h1>
+              <p className="text-lg text-muted-foreground leading-relaxed">{quest.description}</p>
+            </>
+          )}
 
           <div className="aspect-video rounded-3xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-8xl">
             🎯
@@ -104,7 +240,9 @@ function QuestDetail() {
                   <Repeat className="size-5" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-muted-foreground uppercase">Recurrence</div>
+                  <div className="text-xs font-bold text-muted-foreground uppercase">
+                    Recurrence
+                  </div>
                   <div className="font-bold">Recurring</div>
                 </div>
               </div>
@@ -126,7 +264,9 @@ function QuestDetail() {
                     {m.username.slice(0, 1).toUpperCase()}
                   </span>
                   <span className="flex-1 font-bold text-sm">{m.username}</span>
-                  <span className="text-xs font-bold text-muted-foreground capitalize">{m.status}</span>
+                  <span className="text-xs font-bold text-muted-foreground capitalize">
+                    {m.status}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -145,10 +285,26 @@ function QuestDetail() {
               {quest.status === "completed" ? "Completed" : "Parent View"}
             </div>
           )}
+          {canManage && !editMode && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setEditMode(true)}
+                className="flex-1 rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase py-3"
+              >
+                Edit
+              </button>
+              <button
+                onClick={onDelete}
+                disabled={deleteMutation.isPending}
+                className="flex-1 rounded-2xl bg-destructive text-destructive-foreground font-display font-extrabold uppercase py-3 disabled:opacity-60"
+              >
+                {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          )}
           {completeMessage && <p className="text-sm text-muted-foreground">{completeMessage}</p>}
         </aside>
       </div>
     </div>
   );
 }
-
