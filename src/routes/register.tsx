@@ -60,18 +60,29 @@ function RegisterPage() {
           <h1 className="text-4xl text-primary-dark">DinoQuest</h1>
           <p className="text-muted-foreground font-bold">Create your account</p>
         </div>
-        <form onSubmit={submit} className="rounded-3xl bg-card border-2 border-border p-6 space-y-4 card-pop">
+        <form
+          onSubmit={submit}
+          className="rounded-3xl bg-card border-2 border-border p-6 space-y-4 card-pop"
+        >
           <label className="block space-y-1.5">
-            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Username</span>
+            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              Username
+            </span>
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary"
               required
+              minLength={3}
+              maxLength={30}
+              pattern="[a-zA-Z0-9_]{3,30}"
+              title="Use 3-30 letters, numbers, or underscores."
             />
           </label>
           <label className="block space-y-1.5">
-            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Email (optional)</span>
+            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              Email (optional)
+            </span>
             <input
               type="email"
               value={email}
@@ -80,16 +91,19 @@ function RegisterPage() {
             />
           </label>
           <label className="block space-y-1.5">
-            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Password</span>
+            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              Password
+            </span>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary"
               required
-              minLength={8}
+              minLength={12}
             />
           </label>
+          <p className="text-xs text-muted-foreground">Password must be at least 12 characters.</p>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <button
             disabled={loading}
@@ -98,7 +112,10 @@ function RegisterPage() {
             {loading ? "Creating..." : "Create Account"}
           </button>
           <p className="text-center text-sm text-muted-foreground">
-            Already have an account? <Link to="/login" className="text-primary font-bold hover:underline">Log In</Link>
+            Already have an account?{" "}
+            <Link to="/login" className="text-primary font-bold hover:underline">
+              Log In
+            </Link>
           </p>
         </form>
       </div>
