@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: dinoquest-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_PATH: /app/data/dinoquest.db
+    volumes:
+      - dinoquest_data:/app/data
+    ports:
+      - "8122:8122"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8122/api/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn backend.main:app --host 0.0.0.0 --port 8122"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: dinoquest-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      VITE_DEV_API_PROXY_TARGET: http://api:8122
+      VITE_DEV_WS_PROXY_TARGET: ws://api:8122
+    ports:
+      - "3000:3000"
+    command: npm run dev -- --host 0.0.0.0 --port 3000
+
+volumes:
+  dinoquest_data:

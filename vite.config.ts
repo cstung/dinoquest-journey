@@ -6,6 +6,9 @@
 // You can pass additional config via defineConfig({ vite: { ... } }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+const apiProxyTarget = process.env.VITE_DEV_API_PROXY_TARGET || "http://localhost:8122";
+const wsProxyTarget = process.env.VITE_DEV_WS_PROXY_TARGET || "ws://localhost:8122";
+
 // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
 // @cloudflare/vite-plugin builds from this — wrangler.jsonc main alone is insufficient.
 export default defineConfig({
@@ -15,9 +18,9 @@ export default defineConfig({
   vite: {
     server: {
       proxy: {
-        "/api": "http://localhost:8122",
+        "/api": apiProxyTarget,
         "/ws": {
-          target: "ws://localhost:8122",
+          target: wsProxyTarget,
           ws: true,
         },
       },
