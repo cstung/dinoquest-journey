@@ -9,38 +9,279 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RewardsRouteImport } from './routes/rewards'
+import { Route as PetsRouteImport } from './routes/pets'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as LeaderboardRouteImport } from './routes/leaderboard'
+import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TestsIndexRouteImport } from './routes/tests.index'
+import { Route as QuestsIndexRouteImport } from './routes/quests.index'
+import { Route as FamiliesIndexRouteImport } from './routes/families.index'
+import { Route as TestsNewRouteImport } from './routes/tests.new'
+import { Route as QuestsNewRouteImport } from './routes/quests.new'
+import { Route as QuestsQuestIdRouteImport } from './routes/quests.$questId'
+import { Route as FamiliesNewRouteImport } from './routes/families.new'
+import { Route as FamiliesJoinRouteImport } from './routes/families.join'
+import { Route as FamiliesFamilyIdRouteImport } from './routes/families.$familyId'
 
+const RewardsRoute = RewardsRouteImport.update({
+  id: '/rewards',
+  path: '/rewards',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PetsRoute = PetsRouteImport.update({
+  id: '/pets',
+  path: '/pets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeaderboardRoute = LeaderboardRouteImport.update({
+  id: '/leaderboard',
+  path: '/leaderboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TestsIndexRoute = TestsIndexRouteImport.update({
+  id: '/tests/',
+  path: '/tests/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuestsIndexRoute = QuestsIndexRouteImport.update({
+  id: '/quests/',
+  path: '/quests/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FamiliesIndexRoute = FamiliesIndexRouteImport.update({
+  id: '/families/',
+  path: '/families/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestsNewRoute = TestsNewRouteImport.update({
+  id: '/tests/new',
+  path: '/tests/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuestsNewRoute = QuestsNewRouteImport.update({
+  id: '/quests/new',
+  path: '/quests/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuestsQuestIdRoute = QuestsQuestIdRouteImport.update({
+  id: '/quests/$questId',
+  path: '/quests/$questId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FamiliesNewRoute = FamiliesNewRouteImport.update({
+  id: '/families/new',
+  path: '/families/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FamiliesJoinRoute = FamiliesJoinRouteImport.update({
+  id: '/families/join',
+  path: '/families/join',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FamiliesFamilyIdRoute = FamiliesFamilyIdRouteImport.update({
+  id: '/families/$familyId',
+  path: '/families/$familyId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/calendar': typeof CalendarRoute
+  '/leaderboard': typeof LeaderboardRoute
+  '/login': typeof LoginRoute
+  '/pets': typeof PetsRoute
+  '/rewards': typeof RewardsRoute
+  '/families/$familyId': typeof FamiliesFamilyIdRoute
+  '/families/join': typeof FamiliesJoinRoute
+  '/families/new': typeof FamiliesNewRoute
+  '/quests/$questId': typeof QuestsQuestIdRoute
+  '/quests/new': typeof QuestsNewRoute
+  '/tests/new': typeof TestsNewRoute
+  '/families/': typeof FamiliesIndexRoute
+  '/quests/': typeof QuestsIndexRoute
+  '/tests/': typeof TestsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/calendar': typeof CalendarRoute
+  '/leaderboard': typeof LeaderboardRoute
+  '/login': typeof LoginRoute
+  '/pets': typeof PetsRoute
+  '/rewards': typeof RewardsRoute
+  '/families/$familyId': typeof FamiliesFamilyIdRoute
+  '/families/join': typeof FamiliesJoinRoute
+  '/families/new': typeof FamiliesNewRoute
+  '/quests/$questId': typeof QuestsQuestIdRoute
+  '/quests/new': typeof QuestsNewRoute
+  '/tests/new': typeof TestsNewRoute
+  '/families': typeof FamiliesIndexRoute
+  '/quests': typeof QuestsIndexRoute
+  '/tests': typeof TestsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/calendar': typeof CalendarRoute
+  '/leaderboard': typeof LeaderboardRoute
+  '/login': typeof LoginRoute
+  '/pets': typeof PetsRoute
+  '/rewards': typeof RewardsRoute
+  '/families/$familyId': typeof FamiliesFamilyIdRoute
+  '/families/join': typeof FamiliesJoinRoute
+  '/families/new': typeof FamiliesNewRoute
+  '/quests/$questId': typeof QuestsQuestIdRoute
+  '/quests/new': typeof QuestsNewRoute
+  '/tests/new': typeof TestsNewRoute
+  '/families/': typeof FamiliesIndexRoute
+  '/quests/': typeof QuestsIndexRoute
+  '/tests/': typeof TestsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/calendar'
+    | '/leaderboard'
+    | '/login'
+    | '/pets'
+    | '/rewards'
+    | '/families/$familyId'
+    | '/families/join'
+    | '/families/new'
+    | '/quests/$questId'
+    | '/quests/new'
+    | '/tests/new'
+    | '/families/'
+    | '/quests/'
+    | '/tests/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/admin'
+    | '/calendar'
+    | '/leaderboard'
+    | '/login'
+    | '/pets'
+    | '/rewards'
+    | '/families/$familyId'
+    | '/families/join'
+    | '/families/new'
+    | '/quests/$questId'
+    | '/quests/new'
+    | '/tests/new'
+    | '/families'
+    | '/quests'
+    | '/tests'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/calendar'
+    | '/leaderboard'
+    | '/login'
+    | '/pets'
+    | '/rewards'
+    | '/families/$familyId'
+    | '/families/join'
+    | '/families/new'
+    | '/quests/$questId'
+    | '/quests/new'
+    | '/tests/new'
+    | '/families/'
+    | '/quests/'
+    | '/tests/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
+  CalendarRoute: typeof CalendarRoute
+  LeaderboardRoute: typeof LeaderboardRoute
+  LoginRoute: typeof LoginRoute
+  PetsRoute: typeof PetsRoute
+  RewardsRoute: typeof RewardsRoute
+  FamiliesFamilyIdRoute: typeof FamiliesFamilyIdRoute
+  FamiliesJoinRoute: typeof FamiliesJoinRoute
+  FamiliesNewRoute: typeof FamiliesNewRoute
+  QuestsQuestIdRoute: typeof QuestsQuestIdRoute
+  QuestsNewRoute: typeof QuestsNewRoute
+  TestsNewRoute: typeof TestsNewRoute
+  FamiliesIndexRoute: typeof FamiliesIndexRoute
+  QuestsIndexRoute: typeof QuestsIndexRoute
+  TestsIndexRoute: typeof TestsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/rewards': {
+      id: '/rewards'
+      path: '/rewards'
+      fullPath: '/rewards'
+      preLoaderRoute: typeof RewardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pets': {
+      id: '/pets'
+      path: '/pets'
+      fullPath: '/pets'
+      preLoaderRoute: typeof PetsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leaderboard': {
+      id: '/leaderboard'
+      path: '/leaderboard'
+      fullPath: '/leaderboard'
+      preLoaderRoute: typeof LeaderboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +289,90 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tests/': {
+      id: '/tests/'
+      path: '/tests'
+      fullPath: '/tests/'
+      preLoaderRoute: typeof TestsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quests/': {
+      id: '/quests/'
+      path: '/quests'
+      fullPath: '/quests/'
+      preLoaderRoute: typeof QuestsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/families/': {
+      id: '/families/'
+      path: '/families'
+      fullPath: '/families/'
+      preLoaderRoute: typeof FamiliesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tests/new': {
+      id: '/tests/new'
+      path: '/tests/new'
+      fullPath: '/tests/new'
+      preLoaderRoute: typeof TestsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quests/new': {
+      id: '/quests/new'
+      path: '/quests/new'
+      fullPath: '/quests/new'
+      preLoaderRoute: typeof QuestsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quests/$questId': {
+      id: '/quests/$questId'
+      path: '/quests/$questId'
+      fullPath: '/quests/$questId'
+      preLoaderRoute: typeof QuestsQuestIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/families/new': {
+      id: '/families/new'
+      path: '/families/new'
+      fullPath: '/families/new'
+      preLoaderRoute: typeof FamiliesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/families/join': {
+      id: '/families/join'
+      path: '/families/join'
+      fullPath: '/families/join'
+      preLoaderRoute: typeof FamiliesJoinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/families/$familyId': {
+      id: '/families/$familyId'
+      path: '/families/$familyId'
+      fullPath: '/families/$familyId'
+      preLoaderRoute: typeof FamiliesFamilyIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
+  CalendarRoute: CalendarRoute,
+  LeaderboardRoute: LeaderboardRoute,
+  LoginRoute: LoginRoute,
+  PetsRoute: PetsRoute,
+  RewardsRoute: RewardsRoute,
+  FamiliesFamilyIdRoute: FamiliesFamilyIdRoute,
+  FamiliesJoinRoute: FamiliesJoinRoute,
+  FamiliesNewRoute: FamiliesNewRoute,
+  QuestsQuestIdRoute: QuestsQuestIdRoute,
+  QuestsNewRoute: QuestsNewRoute,
+  TestsNewRoute: TestsNewRoute,
+  FamiliesIndexRoute: FamiliesIndexRoute,
+  QuestsIndexRoute: QuestsIndexRoute,
+  TestsIndexRoute: TestsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
