@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RewardsRouteImport } from './routes/rewards'
 import { Route as PetsRouteImport } from './routes/pets'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as IndexRouteImport } from './routes/index'
@@ -18,6 +19,11 @@ import { Route as TestsNewRouteImport } from './routes/tests.new'
 import { Route as QuestsNewRouteImport } from './routes/quests.new'
 import { Route as QuestsQuestIdRouteImport } from './routes/quests.$questId'
 
+const RewardsRoute = RewardsRouteImport.update({
+  id: '/rewards',
+  path: '/rewards',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PetsRoute = PetsRouteImport.update({
   id: '/pets',
   path: '/pets',
@@ -63,6 +69,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/leaderboard': typeof LeaderboardRoute
   '/pets': typeof PetsRoute
+  '/rewards': typeof RewardsRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
   '/quests/new': typeof QuestsNewRoute
   '/tests/new': typeof TestsNewRoute
@@ -73,6 +80,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/leaderboard': typeof LeaderboardRoute
   '/pets': typeof PetsRoute
+  '/rewards': typeof RewardsRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
   '/quests/new': typeof QuestsNewRoute
   '/tests/new': typeof TestsNewRoute
@@ -84,6 +92,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/leaderboard': typeof LeaderboardRoute
   '/pets': typeof PetsRoute
+  '/rewards': typeof RewardsRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
   '/quests/new': typeof QuestsNewRoute
   '/tests/new': typeof TestsNewRoute
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/leaderboard'
     | '/pets'
+    | '/rewards'
     | '/quests/$questId'
     | '/quests/new'
     | '/tests/new'
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/leaderboard'
     | '/pets'
+    | '/rewards'
     | '/quests/$questId'
     | '/quests/new'
     | '/tests/new'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
     | '/'
     | '/leaderboard'
     | '/pets'
+    | '/rewards'
     | '/quests/$questId'
     | '/quests/new'
     | '/tests/new'
@@ -127,6 +139,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LeaderboardRoute: typeof LeaderboardRoute
   PetsRoute: typeof PetsRoute
+  RewardsRoute: typeof RewardsRoute
   QuestsQuestIdRoute: typeof QuestsQuestIdRoute
   QuestsNewRoute: typeof QuestsNewRoute
   TestsNewRoute: typeof TestsNewRoute
@@ -136,6 +149,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/rewards': {
+      id: '/rewards'
+      path: '/rewards'
+      fullPath: '/rewards'
+      preLoaderRoute: typeof RewardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pets': {
       id: '/pets'
       path: '/pets'
@@ -199,6 +219,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LeaderboardRoute: LeaderboardRoute,
   PetsRoute: PetsRoute,
+  RewardsRoute: RewardsRoute,
   QuestsQuestIdRoute: QuestsQuestIdRoute,
   QuestsNewRoute: QuestsNewRoute,
   TestsNewRoute: TestsNewRoute,
