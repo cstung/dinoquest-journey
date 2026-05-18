@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as QuestsIndexRouteImport } from './routes/quests.index'
+import { Route as QuestsNewRouteImport } from './routes/quests.new'
 import { Route as QuestsQuestIdRouteImport } from './routes/quests.$questId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +24,11 @@ const QuestsIndexRoute = QuestsIndexRouteImport.update({
   path: '/quests/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const QuestsNewRoute = QuestsNewRouteImport.update({
+  id: '/quests/new',
+  path: '/quests/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const QuestsQuestIdRoute = QuestsQuestIdRouteImport.update({
   id: '/quests/$questId',
   path: '/quests/$questId',
@@ -32,30 +38,34 @@ const QuestsQuestIdRoute = QuestsQuestIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
+  '/quests/new': typeof QuestsNewRoute
   '/quests/': typeof QuestsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
+  '/quests/new': typeof QuestsNewRoute
   '/quests': typeof QuestsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
+  '/quests/new': typeof QuestsNewRoute
   '/quests/': typeof QuestsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/quests/$questId' | '/quests/'
+  fullPaths: '/' | '/quests/$questId' | '/quests/new' | '/quests/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/quests/$questId' | '/quests'
-  id: '__root__' | '/' | '/quests/$questId' | '/quests/'
+  to: '/' | '/quests/$questId' | '/quests/new' | '/quests'
+  id: '__root__' | '/' | '/quests/$questId' | '/quests/new' | '/quests/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   QuestsQuestIdRoute: typeof QuestsQuestIdRoute
+  QuestsNewRoute: typeof QuestsNewRoute
   QuestsIndexRoute: typeof QuestsIndexRoute
 }
 
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof QuestsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/quests/new': {
+      id: '/quests/new'
+      path: '/quests/new'
+      fullPath: '/quests/new'
+      preLoaderRoute: typeof QuestsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/quests/$questId': {
       id: '/quests/$questId'
       path: '/quests/$questId'
@@ -88,6 +105,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   QuestsQuestIdRoute: QuestsQuestIdRoute,
+  QuestsNewRoute: QuestsNewRoute,
   QuestsIndexRoute: QuestsIndexRoute,
 }
 export const routeTree = rootRouteImport
