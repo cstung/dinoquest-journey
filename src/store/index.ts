@@ -25,17 +25,8 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      user: {
-        id: 1,
-        username: "Alex",
-        email: "alex@dinoquest.app",
-        globalRole: "superadmin",
-        level: 7,
-        xp: 1240,
-        xpToNext: 1500,
-        streak: 12,
-      },
-      isAuthenticated: true,
+      user: null,
+      isAuthenticated: false,
       login: (user) => set({ user, isAuthenticated: true }),
       logout: () => set({ user: null, isAuthenticated: false }),
     }),
@@ -53,8 +44,8 @@ interface FamilyState {
 export const useFamilyStore = create<FamilyState>()(
   persist(
     (set) => ({
-      activeFamilyId: 1,
-      activeFamilyRole: "parent",
+      activeFamilyId: null,
+      activeFamilyRole: null,
       setActiveFamily: (id, role) =>
         set({ activeFamilyId: id, activeFamilyRole: role }),
       clear: () => set({ activeFamilyId: null, activeFamilyRole: null }),

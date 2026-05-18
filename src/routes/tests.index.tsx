@@ -1,29 +1,53 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { tests, children } from "@/data/mock";
-import { useFamilyStore } from "@/store";
-import { Plus, Clock, AlertCircle, Play } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertCircle, Clock, Play, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFamilyStore } from "@/store";
+import {
+  useRequestReopen,
+  useStartTest,
+  useSubmitTest,
+  useTests,
+  type TestAttemptStart,
+  type TestListItem,
+} from "@/hooks/use-tests";
 
 export const Route = createFileRoute("/tests/")({ component: TestsPage });
 
 function TestsPage() {
-  const isParent = useFamilyStore((s) => s.activeFamilyRole) === "parent";
+  const familyId = useFamilyStore((s) => s.activeFamilyId);
+  const role = useFamilyStore((s) => s.activeFamilyRole);
+  const isParent = role === "parent";
   const [tab, setTab] = useState<"all" | "draft" | "published" | "completed">("all");
-  const reopenCount = tests.filter((t) => t.status === "reopen_requested").length;
+  const [search, setSearch] = useState("");
+  const { data, isLoading, error } = useTests(familyId, { status: tab, search });
+  const tests = data?.items ?? [];
+  const reopenCount = useMemo(
+    () => tests.reduce((acc, item) => acc + (item.status === "reopen_requested" ? 1 : 0), 0),
+    [tests],
+  );
 
-  const filtered = tests.filter((t) => {
-    if (tab === "all") return true;
-    if (tab === "published") return t.status === "published" || t.status === "reopen_requested";
-    return t.status === tab;
-  });
+  if (!familyId) {
+    return <div className="py-10 text-sm text-muted-foreground">Select a family first to view tests.</div>;
+  }
+
+  if (isLoading) {
+    return <div className="py-10 text-sm text-muted-foreground">Loading tests...</div>;
+  }
+
+  if (error) {
+    return <div className="py-10 text-sm text-destructive">Failed to load tests.</div>;
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-3xl">{isParent ? "Tests" : "My Tests"}</h1>
         {isParent && (
-          <Link to="/tests/new" className="rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase px-5 py-3 shadow-pop-sm inline-flex items-center gap-2">
+          <Link
+            to="/tests/new"
+            className="rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase px-5 py-3 shadow-pop-sm inline-flex items-center gap-2"
+          >
             <Plus className="size-5" strokeWidth={3} /> New Test
           </Link>
         )}
@@ -33,10 +57,20 @@ function TestsPage() {
         <div className="rounded-2xl bg-warning/15 border-2 border-warning/30 p-4 flex items-center gap-3">
           <AlertCircle className="size-5 text-warning shrink-0" />
           <p className="text-sm font-bold">
-            <span className="text-warning">{reopenCount} reopen request{reopenCount > 1 ? "s" : ""}</span> waiting for your approval.
+            <span className="text-warning">
+              {reopenCount} reopen request{reopenCount > 1 ? "s" : ""}
+            </span>{" "}
+            waiting for your approval.
           </p>
         </div>
       )}
+
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search tests..."
+        className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-info"
+      />
 
       <div className="flex gap-2 border-b-2 border-border overflow-x-auto">
         {(isParent ? ["all", "draft", "published", "completed"] : ["all", "completed"]).map((t) => (
@@ -45,7 +79,7 @@ function TestsPage() {
             onClick={() => setTab(t as typeof tab)}
             className={cn(
               "px-4 py-2.5 font-display font-extrabold uppercase text-sm tracking-wide border-b-4 -mb-0.5 whitespace-nowrap transition-colors",
-              tab === t ? "border-info text-info" : "border-transparent text-muted-foreground hover:text-foreground"
+              tab === t ? "border-info text-info" : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {t}
@@ -54,59 +88,192 @@ function TestsPage() {
       </div>
 
       <div className="grid gap-4">
-        {filtered.map((t) => (
-          <div key={t.id} className="rounded-2xl bg-card border-2 border-border p-4 card-pop flex flex-col sm:flex-row gap-4">
-            <div className="relative aspect-video sm:w-64 shrink-0 rounded-xl overflow-hidden bg-muted">
-              <img src={t.thumbnailUrl} alt={t.title} className="absolute inset-0 size-full object-cover" />
-              <div className="absolute inset-0 bg-black/30 grid place-items-center opacity-0 hover:opacity-100 transition-opacity">
-                <div className="size-12 rounded-full bg-info text-info-foreground grid place-items-center">
-                  <Play className="size-6 ml-0.5" fill="currentColor" />
-                </div>
-              </div>
-            </div>
-            <div className="flex-1 flex flex-col justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <StatusBadge status={t.status} />
-                  <span className="text-[10px] font-bold uppercase text-muted-foreground">
-                    Subtitles: {t.subtitleSource === "youtube_auto" ? "YouTube" : "Whisper AI"}
-                  </span>
-                </div>
-                <h3 className="font-display font-extrabold text-lg leading-tight">{t.title}</h3>
-                <p className="text-sm text-muted-foreground flex items-center gap-3 mt-1">
-                  <span>{t.questionCount} questions</span>
-                  <span className="size-1 rounded-full bg-muted-foreground" />
-                  <span className="flex items-center gap-1"><Clock className="size-3" /> {t.timeLimit} min</span>
-                </p>
-              </div>
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex -space-x-2">
-                  {t.assignedTo.map((id) => {
-                    const c = children.find((c) => c.id === id);
-                    return (
-                      <span
-                        key={id}
-                        className="size-7 rounded-xl border-2 border-card grid place-items-center text-[10px] font-extrabold text-white"
-                        style={{ backgroundColor: c?.avatarColor }}
-                      >
-                        {c?.name.slice(0, 1)}
-                      </span>
-                    );
-                  })}
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-extrabold text-warning">+{t.xp} XP</span>
-                  {isParent ? (
-                    <button className="rounded-xl bg-info text-info-foreground font-display font-extrabold uppercase text-xs px-3 py-2">View Report</button>
-                  ) : (
-                    <Link to="/tests" className="rounded-xl bg-primary text-primary-foreground font-display font-extrabold uppercase text-xs px-3 py-2 btn-pop">Start Test</Link>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+        {tests.map((test) => (
+          <TestCard key={test.id} test={test} familyId={familyId} isParent={isParent} />
         ))}
       </div>
+
+      {tests.length === 0 && (
+        <div className="text-center py-16 text-muted-foreground">
+          <div className="text-5xl mb-3">No tests yet.</div>
+          <p className="font-bold">Create one from a YouTube video to get started.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TestCard({ test, familyId, isParent }: { test: TestListItem; familyId: number; isParent: boolean }) {
+  const [attempt, setAttempt] = useState<TestAttemptStart | null>(null);
+  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [message, setMessage] = useState<string | null>(null);
+  const startMutation = useStartTest(familyId, test.id);
+  const submitMutation = useSubmitTest(familyId, test.id);
+  const reopenMutation = useRequestReopen(familyId, test.id);
+
+  const openAttempt = async () => {
+    setMessage(null);
+    try {
+      const data = await startMutation.mutateAsync();
+      const defaultAnswers: Record<number, number> = {};
+      for (const q of data.questions) defaultAnswers[q.id] = 0;
+      setAnswers(defaultAnswers);
+      setAttempt(data);
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
+  };
+
+  const submitAttempt = async () => {
+    if (!attempt) return;
+    setMessage(null);
+    try {
+      const result = await submitMutation.mutateAsync({
+        attemptId: attempt.attemptId,
+        answers: attempt.questions.map((q) => ({
+          questionId: q.id,
+          selectedOption: answers[q.id] ?? 0,
+        })),
+      });
+      setAttempt(null);
+      setMessage(`Submitted: ${result.scorePct}% score, +${result.xpEarned} XP.`);
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
+  };
+
+  const requestReopen = async () => {
+    setMessage(null);
+    try {
+      await reopenMutation.mutateAsync({ reason: "Need another attempt to improve score" });
+      setMessage("Reopen request sent to parent.");
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl bg-card border-2 border-border p-4 card-pop flex flex-col gap-4">
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative aspect-video sm:w-64 shrink-0 rounded-xl overflow-hidden bg-muted">
+          {test.thumbnailUrl ? (
+            <img src={test.thumbnailUrl} alt={test.title} className="absolute inset-0 size-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">No thumbnail</div>
+          )}
+          <div className="absolute inset-0 bg-black/30 grid place-items-center opacity-0 hover:opacity-100 transition-opacity">
+            <div className="size-12 rounded-full bg-info text-info-foreground grid place-items-center">
+              <Play className="size-6 ml-0.5" fill="currentColor" />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 flex flex-col justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <StatusBadge status={test.status} />
+              <span className="text-[10px] font-bold uppercase text-muted-foreground">
+                Subtitles: {test.subtitleSource === "youtube_auto" ? "YouTube" : "Whisper AI"}
+              </span>
+            </div>
+            <h3 className="font-display font-extrabold text-lg leading-tight">{test.title}</h3>
+            <p className="text-sm text-muted-foreground flex items-center gap-3 mt-1">
+              <span>{test.questionCount} questions</span>
+              <span className="size-1 rounded-full bg-muted-foreground" />
+              <span className="flex items-center gap-1">
+                <Clock className="size-3" /> {test.timeLimitMin} min
+              </span>
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex -space-x-2">
+              {test.assignedMembers.map((m) => (
+                <span
+                  key={m.userId}
+                  className="size-7 rounded-xl border-2 border-card grid place-items-center text-[10px] font-extrabold text-white"
+                  style={{ backgroundColor: m.avatarColor ?? "#9ca3af" }}
+                  title={m.username}
+                >
+                  {m.username.slice(0, 1).toUpperCase()}
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-extrabold text-warning">+{test.maxXp} XP</span>
+              {isParent ? (
+                <button className="rounded-xl bg-info text-info-foreground font-display font-extrabold uppercase text-xs px-3 py-2">
+                  View Report
+                </button>
+              ) : (
+                <div className="flex gap-2">
+                  {test.status === "completed" ? (
+                    <button
+                      onClick={requestReopen}
+                      disabled={reopenMutation.isPending}
+                      className="rounded-xl bg-secondary font-display font-extrabold uppercase text-xs px-3 py-2"
+                    >
+                      {reopenMutation.isPending ? "Sending..." : "Request Reopen"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={openAttempt}
+                      disabled={startMutation.isPending}
+                      className="rounded-xl bg-primary text-primary-foreground font-display font-extrabold uppercase text-xs px-3 py-2 btn-pop"
+                    >
+                      {startMutation.isPending ? "Starting..." : "Start Test"}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {message && <p className="text-sm text-muted-foreground">{message}</p>}
+
+      {attempt && (
+        <div className="rounded-2xl border-2 border-border p-4 bg-background space-y-4">
+          <h4 className="font-display font-extrabold text-lg">Attempt: {attempt.title}</h4>
+          {attempt.questions.map((q) => (
+            <div key={q.id} className="space-y-2">
+              <p className="font-bold text-sm">
+                {q.questionOrder}. {q.questionText}
+              </p>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {q.options.map((option, oi) => (
+                  <label key={oi} className="flex items-center gap-2 rounded-xl border-2 border-border px-3 py-2">
+                    <input
+                      type="radio"
+                      name={`attempt-${attempt.attemptId}-q-${q.id}`}
+                      checked={answers[q.id] === oi}
+                      onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: oi }))}
+                      className="accent-primary"
+                    />
+                    <span className="text-sm font-bold">{option}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setAttempt(null)}
+              className="rounded-xl bg-secondary font-display font-extrabold uppercase text-xs px-3 py-2"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={submitAttempt}
+              disabled={submitMutation.isPending}
+              className="rounded-xl bg-primary text-primary-foreground font-display font-extrabold uppercase text-xs px-3 py-2 btn-pop"
+            >
+              {submitMutation.isPending ? "Submitting..." : "Submit Test"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -122,11 +289,11 @@ function StatusBadge({ status }: { status: string }) {
     draft: "Draft",
     published: "Published",
     completed: "Done",
-    reopen_requested: "⚠ Reopen Requested",
+    reopen_requested: "Reopen Requested",
   };
   return (
     <span className={cn("text-[10px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-md", map[status])}>
-      {label[status]}
+      {label[status] ?? status}
     </span>
   );
 }

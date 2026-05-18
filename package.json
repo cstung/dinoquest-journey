@@ -9,7 +9,12 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "api:dev": "uvicorn backend.main:app --reload --host 0.0.0.0 --port 8122",
+    "api:health": "python -c \"import urllib.request;print(urllib.request.urlopen('http://localhost:8122/api/health').read().decode())\"",
+    "api:migrate": "alembic upgrade head",
+    "api:revision": "alembic revision --autogenerate -m",
+    "api:test": "python -m pytest -q"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",
