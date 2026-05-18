@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RewardsRouteImport } from './routes/rewards'
 import { Route as PetsRouteImport } from './routes/pets'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -33,6 +34,11 @@ const RewardsRoute = RewardsRouteImport.update({
 const PetsRoute = PetsRouteImport.update({
   id: '/pets',
   path: '/pets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LeaderboardRoute = LeaderboardRouteImport.update({
@@ -106,6 +112,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/calendar': typeof CalendarRoute
   '/leaderboard': typeof LeaderboardRoute
+  '/login': typeof LoginRoute
   '/pets': typeof PetsRoute
   '/rewards': typeof RewardsRoute
   '/families/$familyId': typeof FamiliesFamilyIdRoute
@@ -123,6 +130,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/calendar': typeof CalendarRoute
   '/leaderboard': typeof LeaderboardRoute
+  '/login': typeof LoginRoute
   '/pets': typeof PetsRoute
   '/rewards': typeof RewardsRoute
   '/families/$familyId': typeof FamiliesFamilyIdRoute
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/calendar': typeof CalendarRoute
   '/leaderboard': typeof LeaderboardRoute
+  '/login': typeof LoginRoute
   '/pets': typeof PetsRoute
   '/rewards': typeof RewardsRoute
   '/families/$familyId': typeof FamiliesFamilyIdRoute
@@ -160,6 +169,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/calendar'
     | '/leaderboard'
+    | '/login'
     | '/pets'
     | '/rewards'
     | '/families/$familyId'
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/calendar'
     | '/leaderboard'
+    | '/login'
     | '/pets'
     | '/rewards'
     | '/families/$familyId'
@@ -194,6 +205,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/calendar'
     | '/leaderboard'
+    | '/login'
     | '/pets'
     | '/rewards'
     | '/families/$familyId'
@@ -212,6 +224,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   CalendarRoute: typeof CalendarRoute
   LeaderboardRoute: typeof LeaderboardRoute
+  LoginRoute: typeof LoginRoute
   PetsRoute: typeof PetsRoute
   RewardsRoute: typeof RewardsRoute
   FamiliesFamilyIdRoute: typeof FamiliesFamilyIdRoute
@@ -239,6 +252,13 @@ declare module '@tanstack/react-router' {
       path: '/pets'
       fullPath: '/pets'
       preLoaderRoute: typeof PetsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/leaderboard': {
@@ -340,6 +360,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   CalendarRoute: CalendarRoute,
   LeaderboardRoute: LeaderboardRoute,
+  LoginRoute: LoginRoute,
   PetsRoute: PetsRoute,
   RewardsRoute: RewardsRoute,
   FamiliesFamilyIdRoute: FamiliesFamilyIdRoute,
@@ -355,3 +376,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
