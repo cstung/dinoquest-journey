@@ -4,9 +4,10 @@ import {
   createRootRouteWithContext,
   HeadContent,
   Scripts,
+  useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import appCss from "../styles.css?url";
 import { AppShell } from "@/components/app-shell";
@@ -39,17 +40,24 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isAuthPage = pathname === "/login" || pathname === "/register";
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const activeFamilyId = useFamilyStore((s) => s.activeFamilyId);
+  const [authCheckDone, setAuthCheckDone] = useState(isAuthenticated || isAuthPage);
 
   useFamilyRealtime(activeFamilyId, isAuthenticated, queryClient);
 
   useEffect(() => {
-    if (isAuthPage || isAuthenticated) return;
+    if (isAuthPage || isAuthenticated) {
+      setAuthCheckDone(true);
+      return;
+    }
+
+    setAuthCheckDone(false);
     let active = true;
     apiRequest<{ id: number; username: string; email: string | null; globalRole: "user" | "superadmin" }>(
       "/api/auth/me",
@@ -66,18 +74,28 @@ function RootComponent() {
           xpToNext: 100,
           streak: 0,
         });
+        setAuthCheckDone(true);
       })
       .catch(() => {
-        if (active) logout();
+        if (!active) return;
+        logout();
+        setAuthCheckDone(true);
+        navigate({ to: "/login", replace: true });
       });
     return () => {
       active = false;
     };
-  }, [isAuthPage, isAuthenticated, login, logout]);
+  }, [isAuthPage, isAuthenticated, login, logout, navigate]);
 
   return (
     <QueryClientProvider client={queryClient}>
-      {isAuthPage ? <Outlet /> : <AppShell />}
+      {isAuthPage ? (
+        <Outlet />
+      ) : !isAuthenticated ? (
+        authCheckDone ? null : <div className="min-h-screen grid place-items-center text-sm text-muted-foreground">Checking session...</div>
+      ) : (
+        <AppShell />
+      )}
     </QueryClientProvider>
   );
 }

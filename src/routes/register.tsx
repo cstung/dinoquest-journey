@@ -3,19 +3,20 @@ import { useState } from "react";
 import { useAuthStore } from "@/store";
 import { apiRequest } from "@/lib/api";
 
-type LoginResponse = {
+type RegisterResponse = {
   id: number;
   username: string;
   email: string | null;
   globalRole: "user" | "superadmin";
 };
 
-export const Route = createFileRoute("/login")({ component: LoginPage });
+export const Route = createFileRoute("/register")({ component: RegisterPage });
 
-function LoginPage() {
+function RegisterPage() {
   const login = useAuthStore((s) => s.login);
   const nav = useNavigate();
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -25,9 +26,13 @@ function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const user = await apiRequest<LoginResponse>("/api/auth/login", {
+      const user = await apiRequest<RegisterResponse>("/api/auth/register", {
         method: "POST",
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({
+          username,
+          email: email.trim() ? email.trim() : null,
+          password,
+        }),
       });
       login({
         id: user.id,
@@ -53,7 +58,7 @@ function LoginPage() {
         <div className="text-center">
           <div className="text-6xl mb-2 inline-block animate-bounce-soft">🦖</div>
           <h1 className="text-4xl text-primary-dark">DinoQuest</h1>
-          <p className="text-muted-foreground font-bold">Learn. Quest. Level up.</p>
+          <p className="text-muted-foreground font-bold">Create your account</p>
         </div>
         <form onSubmit={submit} className="rounded-3xl bg-card border-2 border-border p-6 space-y-4 card-pop">
           <label className="block space-y-1.5">
@@ -61,6 +66,16 @@ function LoginPage() {
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary"
+              required
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Email (optional)</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary"
             />
           </label>
@@ -71,6 +86,8 @@ function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary"
+              required
+              minLength={8}
             />
           </label>
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -78,10 +95,10 @@ function LoginPage() {
             disabled={loading}
             className="w-full rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase py-3.5 btn-pop disabled:opacity-60"
           >
-            {loading ? "Logging in..." : "Log In"}
+            {loading ? "Creating..." : "Create Account"}
           </button>
           <p className="text-center text-sm text-muted-foreground">
-            No account? <Link to="/register" className="text-primary font-bold hover:underline">Register</Link>
+            Already have an account? <Link to="/login" className="text-primary font-bold hover:underline">Log In</Link>
           </p>
         </form>
       </div>
