@@ -596,7 +596,7 @@ function KidProfilePage() {
             </Card>
 
             {/* Section 2 — Bio */}
-            <BioSection profile={resolvedProfile} isSelf={isSelf} onSave={updateProfile} isSaving={updateProfileMutation.isPending} />
+            <BioSection profile={resolvedProfile} isSelf={isSelf} />
 
             {/* Section 7 — Quest & Test Summary */}
             <QuestTestSummary stats={stats} />
@@ -608,7 +608,7 @@ function KidProfilePage() {
           {/* RIGHT column */}
           <div className="space-y-6">
             {/* Section 3 — Personal Info */}
-            <PersonalInfoSection profile={resolvedProfile} age={age} isSelf={isSelf} isParent={isParent} onSave={updateProfile} />
+            <PersonalInfoSection profile={resolvedProfile} age={age} isSelf={isSelf} />
 
             {/* Section 8 — Activity */}
             <ActivityFeed events={activity} />
@@ -742,10 +742,6 @@ function IdentityBlock({
               <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={onPick} />
             </>
           )}
-          <span
-            className="absolute top-2 right-2 size-3 rounded-full bg-success border-2 border-card"
-            aria-label="Online"
-          />
         </div>
 
         <div className="flex-1 min-w-0">
@@ -794,36 +790,10 @@ function BirthdayCountdown({ days }: { days: number }) {
 function BioSection({
   profile,
   isSelf,
-  onSave,
-  isSaving,
 }: {
   profile: ProfileData;
   isSelf: boolean;
-  onSave: (p: Partial<ProfileData>) => void;
-  isSaving: boolean;
 }) {
-  const [draft, setDraft] = useState(profile);
-  const dirty = useMemo(
-    () =>
-      draft.nickname !== profile.nickname ||
-      draft.favorite_dino !== profile.favorite_dino ||
-      draft.catchphrase !== profile.catchphrase ||
-      draft.favorite_subject !== profile.favorite_subject ||
-      draft.fun_fact !== profile.fun_fact,
-    [draft, profile]
-  );
-  useEffect(() => setDraft(profile), [profile]);
-
-  const save = () => {
-    onSave({
-      nickname: draft.nickname,
-      favorite_dino: draft.favorite_dino,
-      catchphrase: draft.catchphrase,
-      favorite_subject: draft.favorite_subject,
-      fun_fact: draft.fun_fact,
-    });
-  };
-
   const F = ({
     label,
     children,
@@ -842,58 +812,24 @@ function BioSection({
       <SectionHeader icon={<Star className="size-5" />} title="About Me" />
       <div className="grid md:grid-cols-2 gap-4">
         <F label="Nickname">
-          {isSelf ? (
-            <Input maxLength={30} value={draft.nickname} onChange={(e) => setDraft({ ...draft, nickname: e.target.value })} />
-          ) : (
-            <div className="font-bold">{profile.nickname}</div>
-          )}
+          <div className="font-bold">{profile.nickname || "—"}</div>
         </F>
         <F label="Favorite Dinosaur">
-          {isSelf ? (
-            <Input maxLength={50} value={draft.favorite_dino} onChange={(e) => setDraft({ ...draft, favorite_dino: e.target.value })} />
-          ) : (
-            <div className="font-bold">🦖 {profile.favorite_dino}</div>
-          )}
+          <div className="font-bold">🦖 {profile.favorite_dino || "—"}</div>
         </F>
         <F label="Catchphrase">
-          {isSelf ? (
-            <Input maxLength={80} value={draft.catchphrase} onChange={(e) => setDraft({ ...draft, catchphrase: e.target.value })} />
-          ) : (
-            <div className="font-bold italic">"{profile.catchphrase}"</div>
-          )}
+          <div className="font-bold italic">{profile.catchphrase ? `"${profile.catchphrase}"` : "—"}</div>
         </F>
         <F label="Favorite Subject">
-          {isSelf ? (
-            <Select value={draft.favorite_subject} onValueChange={(v) => setDraft({ ...draft, favorite_subject: v as any })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {FAV_SUBJECTS.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <div className="font-bold">{profile.favorite_subject}</div>
-          )}
+          <div className="font-bold">{profile.favorite_subject || "—"}</div>
         </F>
         <div className="md:col-span-2">
           <F label="Fun Fact">
-            {isSelf ? (
-              <Textarea maxLength={120} rows={3} value={draft.fun_fact} onChange={(e) => setDraft({ ...draft, fun_fact: e.target.value })} />
-            ) : (
-              <div className="font-bold">💡 {profile.fun_fact}</div>
-            )}
+            <div className="font-bold">💡 {profile.fun_fact || "—"}</div>
           </F>
         </div>
       </div>
-      {isSelf && dirty && (
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setDraft(profile)}>Cancel</Button>
-          <Button onClick={save} disabled={isSaving} className="rounded-xl shadow-pop-sm font-display font-extrabold uppercase">
-            <Save className="size-4" /> {isSaving ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      )}
+      {isSelf && <div className="text-xs text-muted-foreground">Use Edit profile to update this section.</div>}
     </Card>
   );
 }
@@ -902,24 +838,11 @@ function PersonalInfoSection({
   profile,
   age,
   isSelf,
-  isParent,
-  onSave,
 }: {
   profile: ProfileData;
   age: number | null;
   isSelf: boolean;
-  isParent: boolean;
-  onSave: (p: Partial<ProfileData>) => void;
 }) {
-  const canEditPhys = isSelf || isParent;
-  const canEditParentOnly = isParent;
-  const [heightDraft, setHeightDraft] = useState<string>(profile.height_cm?.toString() ?? "");
-  const [weightDraft, setWeightDraft] = useState<string>(profile.weight_kg?.toString() ?? "");
-  useEffect(() => {
-    setHeightDraft(profile.height_cm?.toString() ?? "");
-    setWeightDraft(profile.weight_kg?.toString() ?? "");
-  }, [profile.height_cm, profile.weight_kg]);
-
   const Row = ({
     icon,
     label,
@@ -945,81 +868,28 @@ function PersonalInfoSection({
       <SectionHeader icon={<GraduationCap className="size-5" />} title="Personal Info" />
       <div className="divide-y divide-foreground/5">
         <Row icon={<Cake className="size-4" />} label="Birthday">
-          {canEditParentOnly ? (
-            <Input
-              type="date"
-              className="h-8 text-sm"
-              value={profile.birthday ?? ""}
-              onChange={(e) => onSave({ birthday: e.target.value || null })}
-            />
-          ) : profile.birthday ? (
-            format(new Date(profile.birthday), "MMM d, yyyy")
-          ) : (
-            "—"
-          )}
+          {profile.birthday ? format(new Date(profile.birthday), "MMM d, yyyy") : "—"}
         </Row>
         <Row icon={<Sparkles className="size-4" />} label="Age">
           {age != null ? `${age} years old` : "—"}
         </Row>
         <Row icon={<Ruler className="size-4" />} label="Height">
-          {canEditPhys ? (
-            <Input
-              type="number"
-              min={50}
-              max={250}
-              className="h-8 text-sm w-28"
-              value={heightDraft}
-              onChange={(e) => setHeightDraft(e.target.value)}
-              onBlur={() => onSave({ height_cm: heightDraft ? Number(heightDraft) : null })}
-            />
-          ) : (
-            `${profile.height_cm ?? "—"} cm`
-          )}
+          {profile.height_cm == null ? "—" : `${profile.height_cm} cm`}
         </Row>
         <Row icon={<Weight className="size-4" />} label="Weight">
-          {canEditPhys ? (
-            <Input
-              type="number"
-              min={10}
-              max={200}
-              step={0.1}
-              className="h-8 text-sm w-28"
-              value={weightDraft}
-              onChange={(e) => setWeightDraft(e.target.value)}
-              onBlur={() => onSave({ weight_kg: weightDraft ? Number(weightDraft) : null })}
-            />
-          ) : (
-            `${profile.weight_kg ?? "—"} kg`
-          )}
+          {profile.weight_kg == null ? "—" : `${profile.weight_kg} kg`}
         </Row>
         <Row icon={<span className="text-sm">👤</span>} label="Gender">
-          {canEditParentOnly ? (
-            <Select value={profile.gender ?? ""} onValueChange={(v) => onSave({ gender: v as (typeof GENDERS)[number] })}>
-              <SelectTrigger className="h-8 text-sm w-44"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>
-                {GENDERS.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          ) : (
-            profile.gender ?? "—"
-          )}
+          {profile.gender ?? "—"}
         </Row>
         <Row icon={<GraduationCap className="size-4" />} label="Grade">
-          {canEditParentOnly ? (
-            <Select value={profile.school_grade ?? ""} onValueChange={(v) => onSave({ school_grade: v })}>
-              <SelectTrigger className="h-8 text-sm w-44"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>
-                {GRADES.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          ) : (
-            profile.school_grade ?? "—"
-          )}
+          {profile.school_grade ?? "—"}
         </Row>
         <Row icon={<CalendarCheck2 className="size-4" />} label="Member Since">
           {format(new Date(profile.joined_at), "MMM d, yyyy")}
         </Row>
       </div>
+      {isSelf && <div className="text-xs text-muted-foreground">Use Edit profile to update this section.</div>}
     </Card>
   );
 }
@@ -1386,4 +1256,6 @@ function ConfettiStrip() {
     </div>
   );
 }
+
+
 
