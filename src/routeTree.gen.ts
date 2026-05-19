@@ -23,6 +23,7 @@ import { Route as FamiliesIndexRouteImport } from './routes/families.index'
 import { Route as TestsNewRouteImport } from './routes/tests.new'
 import { Route as QuestsNewRouteImport } from './routes/quests.new'
 import { Route as QuestsQuestIdRouteImport } from './routes/quests.$questId'
+import { Route as ProfileUserIdRouteImport } from './routes/profile.$userId'
 import { Route as FamiliesNewRouteImport } from './routes/families.new'
 import { Route as FamiliesFamilyIdRouteImport } from './routes/families.$familyId'
 
@@ -96,6 +97,11 @@ const QuestsQuestIdRoute = QuestsQuestIdRouteImport.update({
   path: '/quests/$questId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileUserIdRoute = ProfileUserIdRouteImport.update({
+  id: '/profile/$userId',
+  path: '/profile/$userId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FamiliesNewRoute = FamiliesNewRouteImport.update({
   id: '/families/new',
   path: '/families/new',
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/rewards': typeof RewardsRoute
   '/families/$familyId': typeof FamiliesFamilyIdRoute
   '/families/new': typeof FamiliesNewRoute
+  '/profile/$userId': typeof ProfileUserIdRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
   '/quests/new': typeof QuestsNewRoute
   '/tests/new': typeof TestsNewRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByTo {
   '/rewards': typeof RewardsRoute
   '/families/$familyId': typeof FamiliesFamilyIdRoute
   '/families/new': typeof FamiliesNewRoute
+  '/profile/$userId': typeof ProfileUserIdRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
   '/quests/new': typeof QuestsNewRoute
   '/tests/new': typeof TestsNewRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   '/rewards': typeof RewardsRoute
   '/families/$familyId': typeof FamiliesFamilyIdRoute
   '/families/new': typeof FamiliesNewRoute
+  '/profile/$userId': typeof ProfileUserIdRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
   '/quests/new': typeof QuestsNewRoute
   '/tests/new': typeof TestsNewRoute
@@ -175,6 +184,7 @@ export interface FileRouteTypes {
     | '/rewards'
     | '/families/$familyId'
     | '/families/new'
+    | '/profile/$userId'
     | '/quests/$questId'
     | '/quests/new'
     | '/tests/new'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/rewards'
     | '/families/$familyId'
     | '/families/new'
+    | '/profile/$userId'
     | '/quests/$questId'
     | '/quests/new'
     | '/tests/new'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/rewards'
     | '/families/$familyId'
     | '/families/new'
+    | '/profile/$userId'
     | '/quests/$questId'
     | '/quests/new'
     | '/tests/new'
@@ -230,6 +242,7 @@ export interface RootRouteChildren {
   RewardsRoute: typeof RewardsRoute
   FamiliesFamilyIdRoute: typeof FamiliesFamilyIdRoute
   FamiliesNewRoute: typeof FamiliesNewRoute
+  ProfileUserIdRoute: typeof ProfileUserIdRoute
   QuestsQuestIdRoute: typeof QuestsQuestIdRoute
   QuestsNewRoute: typeof QuestsNewRoute
   TestsNewRoute: typeof TestsNewRoute
@@ -338,6 +351,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof QuestsQuestIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile/$userId': {
+      id: '/profile/$userId'
+      path: '/profile/$userId'
+      fullPath: '/profile/$userId'
+      preLoaderRoute: typeof ProfileUserIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/families/new': {
       id: '/families/new'
       path: '/families/new'
@@ -366,6 +386,7 @@ const rootRouteChildren: RootRouteChildren = {
   RewardsRoute: RewardsRoute,
   FamiliesFamilyIdRoute: FamiliesFamilyIdRoute,
   FamiliesNewRoute: FamiliesNewRoute,
+  ProfileUserIdRoute: ProfileUserIdRoute,
   QuestsQuestIdRoute: QuestsQuestIdRoute,
   QuestsNewRoute: QuestsNewRoute,
   TestsNewRoute: TestsNewRoute,

@@ -42,13 +42,16 @@ function formatErrorDetail(detail: ErrorDetail | undefined): string {
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const res = await fetch(url, {
     credentials: "include",
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers: isFormData
+      ? { ...(init?.headers ?? {}) }
+      : {
+          "Content-Type": "application/json",
+          ...(init?.headers ?? {}),
+        },
   });
 
   if (!res.ok) {
