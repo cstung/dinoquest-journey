@@ -56,7 +56,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { XPBar } from "@/components/xp-bar";
 import { useAuthStore, useFamilyStore } from "@/store";
-import { apiRequest } from "@/lib/api";
+import { ApiError, apiRequest } from "@/lib/api";
 
 export const Route = createFileRoute("/profile/$userId")({
   head: () => ({
@@ -256,6 +256,31 @@ function KidProfilePage() {
   const activity = activityData?.events ?? [];
   const stats = statsData ?? DEFAULT_STATS;
   const isLoading = profileLoading || statsLoading || achievementsLoading;
+  const selfFallbackProfile: ProfileData | null =
+    isSelf && authUser
+      ? {
+          id: authUser.id,
+          username: authUser.username,
+          nickname: authUser.username,
+          avatar_url: authUser.avatarUrl ?? null,
+          birthday: null,
+          height_cm: null,
+          weight_kg: null,
+          gender: null,
+          school_grade: null,
+          favorite_dino: "",
+          catchphrase: "",
+          favorite_subject: "Other",
+          fun_fact: "",
+          joined_at: new Date().toISOString(),
+        }
+      : null;
+  const resolvedProfile = profile ?? selfFallbackProfile;
+  const profileLoadFailed =
+    profileError instanceof ApiError
+      ? profileError.status
+      : (profileError as { status?: number } | null)?.status;
+  const shouldShowProfileError = !resolvedProfile || (profileLoadFailed != null && profileLoadFailed !== 404);
 
   const updateProfileMutation = useMutation({
     mutationFn: (vals: Partial<ProfileData>) =>
@@ -316,7 +341,7 @@ function KidProfilePage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
 
-  const daysLeft = profile ? daysUntilBirthday(profile.birthday) : null;
+  const daysLeft = resolvedProfile ? daysUntilBirthday(resolvedProfile.birthday) : null;
   useEffect(() => {
     if (daysLeft === 0) setCelebrate(true);
   }, [daysLeft]);
@@ -345,7 +370,7 @@ function KidProfilePage() {
     );
   }
 
-  if (profileError) {
+  if (shouldShowProfileError) {
     return (
       <div className="max-w-md mx-auto mt-20 text-center space-y-4">
         <div className="text-6xl">⚠️</div>
@@ -357,11 +382,11 @@ function KidProfilePage() {
     );
   }
   if (isLoading) return <ProfileSkeleton />;
-  if (!profile) return null;
+  if (!resolvedProfile) return null;
 
   const rank = rankFromLevel(stats.level);
   const xpPct = Math.min(100, (stats.total_xp / stats.xp_to_next_level) * 100);
-  const age = profile.birthday ? differenceInYears(new Date(), new Date(profile.birthday)) : null;
+  const age = resolvedProfile.birthday ? differenceInYears(new Date(), new Date(resolvedProfile.birthday)) : null;
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -370,7 +395,7 @@ function KidProfilePage() {
 
         {/* Section 1 — Identity */}
         <IdentityBlock
-          profile={profile}
+          profile={resolvedProfile}
           rank={rank}
           familyName={activeFamilyName}
           isSelf={isSelf}
@@ -379,7 +404,7 @@ function KidProfilePage() {
         />
 
         {/* Birthday countdown */}
-        {profile.birthday && <BirthdayCountdown days={daysLeft!} />}
+        {resolvedProfile.birthday && <BirthdayCountdown days={daysLeft!} />}
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* LEFT column */}
@@ -435,7 +460,7 @@ function KidProfilePage() {
             </Card>
 
             {/* Section 2 — Bio */}
-            <BioSection profile={profile} isSelf={isSelf} onSave={updateProfile} isSaving={updateProfileMutation.isPending} />
+            <BioSection profile={resolvedProfile} isSelf={isSelf} onSave={updateProfile} isSaving={updateProfileMutation.isPending} />
 
             {/* Section 7 — Quest & Test Summary */}
             <QuestTestSummary stats={stats} />
@@ -447,7 +472,7 @@ function KidProfilePage() {
           {/* RIGHT column */}
           <div className="space-y-6">
             {/* Section 3 — Personal Info */}
-            <PersonalInfoSection profile={profile} age={age} isSelf={isSelf} isParent={isParent} onSave={updateProfile} />
+            <PersonalInfoSection profile={resolvedProfile} age={age} isSelf={isSelf} isParent={isParent} onSave={updateProfile} />
 
             {/* Section 8 — Activity */}
             <ActivityFeed events={activity} />
@@ -459,7 +484,7 @@ function KidProfilePage() {
           <EditProfileDrawer
             open={drawerOpen}
             onOpenChange={setDrawerOpen}
-            profile={profile}
+            profile={resolvedProfile}
             userId={String(userId)}
           />
         )}
