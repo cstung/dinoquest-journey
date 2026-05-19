@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
 from backend.database import get_db
-from backend.dependencies import require_parent
-from backend.models import ActivityLog, FamilyInvite, FamilyMember
-from backend.schemas.invite import InviteOut
+from backend.dependencies import require_parent, require_superadmin
+from backend.models import ActivityLog, Family, FamilyInvite, FamilyMember, User
+from backend.schemas.invite import InviteCreate, InviteOut
 from backend.services.invite_service import (
     build_expiry,
     build_qr_png,
@@ -21,14 +21,36 @@ from backend.services.invite_service import (
 router = APIRouter()
 
 
+def _invite_out(invite: FamilyInvite, family_name: str | None) -> InviteOut:
+    return InviteOut(
+        id=invite.id,
+        family_id=invite.family_id,
+        family_name=family_name,
+        role=invite.role,
+        code=invite.code,
+        qr_token=invite.qr_token,
+        expires_at=invite.expires_at,
+        used_by=invite.used_by,
+        revoked=invite.revoked,
+        created_at=invite.created_at,
+    )
+
+
 @router.post("/{family_id}/invites", response_model=InviteOut, status_code=status.HTTP_201_CREATED)
 async def create_invite(
-    parent_member: FamilyMember = Depends(require_parent),
+    family_id: int,
+    body: InviteCreate,
+    current_user: User = Depends(require_superadmin),
     db: AsyncSession = Depends(get_db),
 ) -> InviteOut:
+    family = await db.get(Family, family_id)
+    if not family or family.is_deleted:
+        raise HTTPException(status_code=404, detail="Family not found")
+
     invite = FamilyInvite(
-        family_id=parent_member.family_id,
-        created_by=parent_member.user_id,
+        family_id=family.id,
+        created_by=current_user.id,
+        role=body.role,
         code=await generate_unique_invite_code(db),
         qr_token=generate_qr_token(),
         expires_at=build_expiry(7),
@@ -36,8 +58,8 @@ async def create_invite(
     db.add(invite)
     db.add(
         ActivityLog(
-            family_id=parent_member.family_id,
-            user_id=parent_member.user_id,
+            family_id=family.id,
+            user_id=current_user.id,
             event_type="invite_sent",
             payload={"invite_id": None},
             is_audit=True,
@@ -45,7 +67,7 @@ async def create_invite(
     )
     await db.commit()
     await db.refresh(invite)
-    return InviteOut.model_validate(invite)
+    return _invite_out(invite, family.name)
 
 
 @router.get("/{family_id}/invites", response_model=list[InviteOut])
@@ -53,6 +75,7 @@ async def list_invites(
     parent_member: FamilyMember = Depends(require_parent),
     db: AsyncSession = Depends(get_db),
 ) -> list[InviteOut]:
+    family = await db.get(Family, parent_member.family_id)
     now = datetime.now(timezone.utc)
     rows = await db.execute(
         select(FamilyInvite)
@@ -63,7 +86,7 @@ async def list_invites(
         )
         .order_by(FamilyInvite.created_at.desc())
     )
-    return [InviteOut.model_validate(item) for item in rows.scalars().all()]
+    return [_invite_out(item, family.name if family else None) for item in rows.scalars().all()]
 
 
 @router.delete(

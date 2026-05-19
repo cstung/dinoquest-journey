@@ -29,6 +29,8 @@ function DinoLogo() {
 
 function FamilySwitcher() {
   const { activeFamilyId, setActiveFamily } = useFamilyStore();
+  const user = useAuthStore((s) => s.user);
+  const isSuperadmin = user?.globalRole === "superadmin";
   const { data: families = [] } = useFamilies();
   const active = families.find((f) => f.id === activeFamilyId) ?? families[0];
 
@@ -77,11 +79,13 @@ function FamilySwitcher() {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link to="/families/new" className="flex items-center gap-2">
-            <Plus className="size-4" /> Create Family
-          </Link>
-        </DropdownMenuItem>
+        {isSuperadmin && (
+          <DropdownMenuItem asChild>
+            <Link to="/families/new" className="flex items-center gap-2">
+              <Plus className="size-4" /> Create Family
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <Link to="/families/join" className="flex items-center gap-2">
             <LogIn className="size-4" /> Join Family

@@ -14,6 +14,7 @@ import { AppShell } from "@/components/app-shell";
 import { useFamilyRealtime } from "@/hooks/use-realtime";
 import { apiRequest } from "@/lib/api";
 import { useAuthStore, useFamilyStore } from "@/store";
+import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
@@ -47,12 +48,12 @@ function RootComponent() {
   const logout = useAuthStore((s) => s.logout);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const activeFamilyId = useFamilyStore((s) => s.activeFamilyId);
-  const [authCheckDone, setAuthCheckDone] = useState(isAuthenticated || isAuthPage);
+  const [authCheckDone, setAuthCheckDone] = useState(isAuthPage);
 
   useFamilyRealtime(activeFamilyId, isAuthenticated, queryClient);
 
   useEffect(() => {
-    if (isAuthPage || isAuthenticated) {
+    if (isAuthPage) {
       setAuthCheckDone(true);
       return;
     }
@@ -85,7 +86,7 @@ function RootComponent() {
     return () => {
       active = false;
     };
-  }, [isAuthPage, isAuthenticated, login, logout, navigate]);
+  }, [isAuthPage, login, logout, navigate]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -96,6 +97,7 @@ function RootComponent() {
       ) : (
         <AppShell />
       )}
+      <Toaster />
     </QueryClientProvider>
   );
 }

@@ -10,9 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RewardsRouteImport } from './routes/rewards'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as PetsRouteImport } from './routes/pets'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -32,6 +32,11 @@ const RewardsRoute = RewardsRouteImport.update({
   path: '/rewards',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PetsRoute = PetsRouteImport.update({
   id: '/pets',
   path: '/pets',
@@ -40,11 +45,6 @@ const PetsRoute = PetsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RegisterRoute = RegisterRouteImport.update({
-  id: '/register',
-  path: '/register',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LeaderboardRoute = LeaderboardRouteImport.update({
@@ -119,8 +119,8 @@ export interface FileRoutesByFullPath {
   '/calendar': typeof CalendarRoute
   '/leaderboard': typeof LeaderboardRoute
   '/login': typeof LoginRoute
-  '/register': typeof RegisterRoute
   '/pets': typeof PetsRoute
+  '/register': typeof RegisterRoute
   '/rewards': typeof RewardsRoute
   '/families/$familyId': typeof FamiliesFamilyIdRoute
   '/families/join': typeof FamiliesJoinRoute
@@ -138,8 +138,8 @@ export interface FileRoutesByTo {
   '/calendar': typeof CalendarRoute
   '/leaderboard': typeof LeaderboardRoute
   '/login': typeof LoginRoute
-  '/register': typeof RegisterRoute
   '/pets': typeof PetsRoute
+  '/register': typeof RegisterRoute
   '/rewards': typeof RewardsRoute
   '/families/$familyId': typeof FamiliesFamilyIdRoute
   '/families/join': typeof FamiliesJoinRoute
@@ -158,8 +158,8 @@ export interface FileRoutesById {
   '/calendar': typeof CalendarRoute
   '/leaderboard': typeof LeaderboardRoute
   '/login': typeof LoginRoute
-  '/register': typeof RegisterRoute
   '/pets': typeof PetsRoute
+  '/register': typeof RegisterRoute
   '/rewards': typeof RewardsRoute
   '/families/$familyId': typeof FamiliesFamilyIdRoute
   '/families/join': typeof FamiliesJoinRoute
@@ -179,8 +179,8 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/leaderboard'
     | '/login'
-    | '/register'
     | '/pets'
+    | '/register'
     | '/rewards'
     | '/families/$familyId'
     | '/families/join'
@@ -198,8 +198,8 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/leaderboard'
     | '/login'
-    | '/register'
     | '/pets'
+    | '/register'
     | '/rewards'
     | '/families/$familyId'
     | '/families/join'
@@ -217,8 +217,8 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/leaderboard'
     | '/login'
-    | '/register'
     | '/pets'
+    | '/register'
     | '/rewards'
     | '/families/$familyId'
     | '/families/join'
@@ -237,8 +237,8 @@ export interface RootRouteChildren {
   CalendarRoute: typeof CalendarRoute
   LeaderboardRoute: typeof LeaderboardRoute
   LoginRoute: typeof LoginRoute
-  RegisterRoute: typeof RegisterRoute
   PetsRoute: typeof PetsRoute
+  RegisterRoute: typeof RegisterRoute
   RewardsRoute: typeof RewardsRoute
   FamiliesFamilyIdRoute: typeof FamiliesFamilyIdRoute
   FamiliesJoinRoute: typeof FamiliesJoinRoute
@@ -260,6 +260,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RewardsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pets': {
       id: '/pets'
       path: '/pets'
@@ -272,13 +279,6 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/register': {
-      id: '/register'
-      path: '/register'
-      fullPath: '/register'
-      preLoaderRoute: typeof RegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/leaderboard': {
@@ -381,8 +381,8 @@ const rootRouteChildren: RootRouteChildren = {
   CalendarRoute: CalendarRoute,
   LeaderboardRoute: LeaderboardRoute,
   LoginRoute: LoginRoute,
-  RegisterRoute: RegisterRoute,
   PetsRoute: PetsRoute,
+  RegisterRoute: RegisterRoute,
   RewardsRoute: RewardsRoute,
   FamiliesFamilyIdRoute: FamiliesFamilyIdRoute,
   FamiliesJoinRoute: FamiliesJoinRoute,

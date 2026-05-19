@@ -30,3 +30,13 @@ class JoinRequestOut(APIModel):
 class JoinDecision(APIModel):
     status: str
 
+
+class JoinBody(APIModel):
+    code: str | None = None
+    qr_token: str | None = None
+
+
+class JoinResult(APIModel):
+    family_id: int
+    family_name: str
+    role: str

@@ -18,46 +18,56 @@ def _register(client: TestClient, username: str, email: str) -> dict:
 
 def _setup_family_with_child(client: TestClient) -> tuple[int, int, TestClient]:
     idx = next(_seq)
-    _register(client, f"parent_test_{idx}", f"parent_test_{idx}@example.com")
+    parent = _register(client, f"parent_test_{idx}", f"parent_test_{idx}@example.com")
+    assert parent["globalRole"] == "superadmin"
     family = client.post("/api/families", json={"name": "Test Family", "motto": "QA"})
     assert family.status_code == 201, family.text
     family_id = family.json()["id"]
 
-    invite = client.post(f"/api/families/{family_id}/invites")
+    invite = client.post(f"/api/families/{family_id}/invites", json={"role": "child"})
     assert invite.status_code == 201, invite.text
     code = invite.json()["code"]
 
     child_client = TestClient(client.app)
     _register(child_client, f"child_test_{idx}", f"child_test_{idx}@example.com")
     join = child_client.post("/api/join", json={"code": code})
-    assert join.status_code == 201, join.text
-    join_id = join.json()["id"]
-
-    resolve = client.patch(f"/api/families/{family_id}/join-requests/{join_id}", json={"status": "approved"})
-    assert resolve.status_code == 200, resolve.text
-    child_user_id = resolve.json()["userId"]
+    assert join.status_code == 200, join.text
+    child_user_id = (
+        child_client.get(f"/api/families/{family_id}/members")
+        .json()
+    )
+    child_user_id = next(m["userId"] for m in child_user_id if m["role"] == "child")
     return family_id, child_user_id, child_client
 
 
 def test_auth_invite_join_flow(client: TestClient) -> None:
-    _register(client, "auth_parent", "auth_parent@example.com")
+    first = _register(client, "auth_parent", "auth_parent@example.com")
+    assert first["globalRole"] == "superadmin"
+
+    second_client = TestClient(client.app)
+    second = _register(second_client, "auth_second", "auth_second@example.com")
+    assert second["globalRole"] == "user"
+
     family = client.post("/api/families", json={"name": "Auth Family"})
     assert family.status_code == 201, family.text
     family_id = family.json()["id"]
 
-    invite = client.post(f"/api/families/{family_id}/invites")
+    invite = client.post(f"/api/families/{family_id}/invites", json={"role": "child"})
     assert invite.status_code == 201, invite.text
+    assert invite.json()["role"] == "child"
     assert invite.json()["code"].isdigit()
     assert len(invite.json()["code"]) == 6
 
     child_client = TestClient(client.app)
     _register(child_client, "auth_child", "auth_child@example.com")
     join = child_client.post("/api/join", json={"code": invite.json()["code"]})
-    assert join.status_code == 201, join.text
+    assert join.status_code == 200, join.text
+    assert join.json()["familyId"] == family_id
+    assert join.json()["role"] == "child"
 
-    pending = client.get(f"/api/families/{family_id}/join-requests")
-    assert pending.status_code == 200, pending.text
-    assert len(pending.json()) == 1
+    joined_twice = child_client.post("/api/join", json={"code": invite.json()["code"]})
+    assert joined_twice.status_code == 400, joined_twice.text
+    assert joined_twice.json()["detail"] == "This invite code has already been used"
 
 
 def test_testmaker_reopen_revokes_and_reawards_xp(client: TestClient) -> None:

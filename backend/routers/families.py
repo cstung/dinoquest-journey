@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from backend.database import get_db
-from backend.dependencies import get_active_membership, get_current_user, require_parent
+from backend.dependencies import get_active_membership, get_current_user, require_parent, require_superadmin
 from backend.models import ActivityLog, Family, FamilyMember, User
 from backend.schemas.family import FamilyCreate, FamilyOut, FamilyUpdate, FamilyWithRoleOut
 from backend.services.family_service import soft_delete_family
@@ -58,7 +58,7 @@ async def list_families(
 @router.post("", response_model=FamilyOut, status_code=status.HTTP_201_CREATED)
 async def create_family(
     body: FamilyCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superadmin),
     db: AsyncSession = Depends(get_db),
 ) -> FamilyOut:
     family = Family(

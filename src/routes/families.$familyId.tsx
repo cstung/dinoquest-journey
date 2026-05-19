@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Users, Mail, UserPlus, Activity, Shield, Settings } from "lucide-react";
+import { ArrowLeft, Users, Mail, Activity, Shield, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useFamilyStore } from "@/store";
 import {
@@ -9,10 +9,8 @@ import {
   useFamilyActivity,
   useFamilyDetail,
   useFamilyInvites,
-  useFamilyJoinRequests,
   useFamilyMembers,
   useRemoveMember,
-  useResolveJoinRequest,
   useRevokeInvite,
   useUpdateMemberRole,
   useUpdateFamily,
@@ -23,7 +21,6 @@ export const Route = createFileRoute("/families/$familyId")({ component: FamilyD
 const TABS = [
   { id: "members", label: "Members", icon: Users },
   { id: "invites", label: "Invites", icon: Mail },
-  { id: "requests", label: "Requests", icon: UserPlus },
   { id: "activity", label: "Activity", icon: Activity },
   { id: "audit", label: "Audit", icon: Shield },
   { id: "settings", label: "Settings", icon: Settings },
@@ -39,17 +36,17 @@ function FamilyDetail() {
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("members");
   const [message, setMessage] = useState<string | null>(null);
   const [showQr, setShowQr] = useState(false);
+  const [inviteRole, setInviteRole] = useState<"parent" | "child">("child");
 
   const detailQuery = useFamilyDetail(familyIdNum);
   const canManage = detailQuery.data?.myRole === "parent";
+  const isSuperadmin = user?.globalRole === "superadmin";
   const membersQuery = useFamilyMembers(familyIdNum);
   const invitesQuery = useFamilyInvites(familyIdNum, tab === "invites" && canManage);
-  const requestsQuery = useFamilyJoinRequests(familyIdNum, tab === "requests" && canManage);
   const activityQuery = useFamilyActivity(familyIdNum, "activity", tab === "activity");
   const auditQuery = useFamilyActivity(familyIdNum, "audit", tab === "audit");
   const createInvite = useCreateInvite(familyIdNum);
   const revokeInvite = useRevokeInvite(familyIdNum);
-  const resolveJoinRequest = useResolveJoinRequest(familyIdNum);
   const updateMemberRole = useUpdateMemberRole(familyIdNum);
   const removeMember = useRemoveMember(familyIdNum);
   const updateFamily = useUpdateFamily(familyIdNum);
@@ -91,16 +88,6 @@ function FamilyDetail() {
     try {
       await revokeInvite.mutateAsync(inviteId);
       setMessage("Invite revoked.");
-    } catch (err) {
-      setMessage((err as Error).message);
-    }
-  };
-
-  const onJoinRequestDecision = async (joinRequestId: number, status: "approved" | "rejected") => {
-    setMessage(null);
-    try {
-      await resolveJoinRequest.mutateAsync({ joinRequestId, status });
-      setMessage(`Join request ${status}.`);
     } catch (err) {
       setMessage((err as Error).message);
     }
@@ -241,9 +228,18 @@ function FamilyDetail() {
       {tab === "invites" && (
         <div className="space-y-4">
           <div className="flex gap-2 flex-wrap">
+            <select
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value as "parent" | "child")}
+              disabled={!isSuperadmin || createInvite.isPending}
+              className="rounded-2xl border-2 border-border bg-background px-4 py-2.5 text-sm font-bold disabled:opacity-60"
+            >
+              <option value="child">Child</option>
+              <option value="parent">Parent</option>
+            </select>
             <button
-              disabled={!canManage || createInvite.isPending}
-              onClick={() => createInvite.mutate()}
+              disabled={!isSuperadmin || createInvite.isPending}
+              onClick={() => createInvite.mutate({ role: inviteRole })}
               className="rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase px-5 py-3 shadow-pop-sm disabled:opacity-60"
             >
               {createInvite.isPending ? "Generating..." : "+ Generate New Invite"}
@@ -273,6 +269,9 @@ function FamilyDetail() {
                 <div key={inv.id} className="rounded-2xl bg-card border-2 border-border p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
+                      <div className="text-xs font-extrabold uppercase tracking-wide text-info mb-1">
+                        {inv.role === "parent" ? "Parent" : "Child"}
+                      </div>
                       <div className="font-display font-extrabold text-3xl tracking-[0.2em] text-primary">
                         {inv.code}
                       </div>
@@ -297,41 +296,6 @@ function FamilyDetail() {
                 <div className="text-sm text-muted-foreground">No active invites.</div>
               )}
             </div>
-          )}
-        </div>
-      )}
-
-      {tab === "requests" && (
-        <div className="space-y-3">
-          {requestsQuery.isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading join requests...</div>
-          ) : (requestsQuery.data ?? []).length === 0 ? (
-            <div className="text-sm text-muted-foreground">No pending join requests.</div>
-          ) : (
-            (requestsQuery.data ?? []).map((req) => (
-              <div key={req.id} className="rounded-2xl bg-card border-2 border-border p-4">
-                <p className="font-bold">{req.username}</p>
-                <p className="text-xs text-muted-foreground">
-                  Requested {new Date(req.requestedAt).toLocaleString()}
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => onJoinRequestDecision(req.id, "approved")}
-                    disabled={resolveJoinRequest.isPending}
-                    className="rounded-lg bg-primary text-primary-foreground text-xs font-extrabold uppercase px-3 py-2"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => onJoinRequestDecision(req.id, "rejected")}
-                    disabled={resolveJoinRequest.isPending}
-                    className="rounded-lg bg-secondary text-xs font-extrabold uppercase px-3 py-2"
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            ))
           )}
         </div>
       )}

@@ -3,11 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, QrCode, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useJoinFamily } from "@/hooks/use-families";
+import { useFamilyStore } from "@/store";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/families/join")({ component: JoinFamily });
 
 function JoinFamily() {
   const nav = useNavigate();
+  const setActiveFamily = useFamilyStore((s) => s.setActiveFamily);
   const [tab, setTab] = useState<"code" | "qr">("code");
   const [code, setCode] = useState("");
   const [qrToken, setQrToken] = useState("");
@@ -27,20 +30,26 @@ function JoinFamily() {
   const joinByCode = async () => {
     setError(null);
     try {
-      await joinFamily.mutateAsync({ code: code.replace(/\s/g, "") });
-      nav({ to: "/families" });
+      const result = await joinFamily.mutateAsync({ code: code.replace(/\s/g, "") });
+      setActiveFamily(result.familyId, result.role);
+      nav({ to: "/families/$familyId", params: { familyId: String(result.familyId) } });
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message;
+      setError(message);
+      toast.error(message);
     }
   };
 
   const joinByQrToken = async () => {
     setError(null);
     try {
-      await joinFamily.mutateAsync({ qrToken: qrToken.trim() });
-      nav({ to: "/families" });
+      const result = await joinFamily.mutateAsync({ qrToken: qrToken.trim() });
+      setActiveFamily(result.familyId, result.role);
+      nav({ to: "/families/$familyId", params: { familyId: String(result.familyId) } });
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message;
+      setError(message);
+      toast.error(message);
     }
   };
 

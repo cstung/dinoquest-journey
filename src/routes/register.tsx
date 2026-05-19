@@ -44,7 +44,7 @@ function RegisterPage() {
         xpToNext: 100,
         streak: 0,
       });
-      nav({ to: "/" });
+      nav({ to: "/families" });
     } catch (err) {
       setError((err as Error).message);
     } finally {

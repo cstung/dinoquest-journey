@@ -24,11 +24,21 @@ export interface Member {
 
 export interface Invite {
   id: number;
+  familyId: number;
+  familyName: string | null;
+  role: "parent" | "child";
   code: string;
   qrToken: string;
   expiresAt: string;
+  usedBy: number | null;
   revoked: boolean;
   createdAt: string;
+}
+
+export interface JoinResult {
+  familyId: number;
+  familyName: string;
+  role: "parent" | "child";
 }
 
 export interface JoinRequestItem {
@@ -126,7 +136,7 @@ export function useJoinFamily() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: { code?: string; qrToken?: string }) =>
-      apiRequest<JoinRequestItem>("/api/join", {
+      apiRequest<JoinResult>("/api/join", {
         method: "POST",
         body: JSON.stringify(body),
       }),
@@ -139,9 +149,10 @@ export function useJoinFamily() {
 export function useCreateInvite(familyId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () =>
+    mutationFn: (body: { role: "parent" | "child" }) =>
       apiRequest<Invite>(`/api/families/${familyId}/invites`, {
         method: "POST",
+        body: JSON.stringify(body),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["family-invites", familyId] });

@@ -1,13 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Plus, LogIn, Users, ArrowRight } from "lucide-react";
-import { useFamilyStore } from "@/store";
+import { useAuthStore, useFamilyStore } from "@/store";
 import { useFamilies } from "@/hooks/use-families";
 
 export const Route = createFileRoute("/families/")({ component: FamiliesLobby });
 
 function FamiliesLobby() {
   const { activeFamilyId, setActiveFamily } = useFamilyStore();
+  const user = useAuthStore((s) => s.user);
   const { data: families = [], isLoading, error } = useFamilies();
+  const isSuperadmin = user?.globalRole === "superadmin";
 
   if (isLoading) {
     return <div className="py-10 text-sm text-muted-foreground">Loading families...</div>;
@@ -26,17 +28,19 @@ function FamiliesLobby() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-3xl">My Families</h1>
         <div className="flex gap-2">
-          <Link
-            to="/families/new"
-            className="rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase px-5 py-3 btn-pop inline-flex items-center gap-2"
-          >
-            <Plus className="size-5" strokeWidth={3} /> Create
-          </Link>
+          {isSuperadmin && (
+            <Link
+              to="/families/new"
+              className="rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase px-5 py-3 btn-pop inline-flex items-center gap-2"
+            >
+              <Plus className="size-5" strokeWidth={3} /> Create
+            </Link>
+          )}
           <Link
             to="/families/join"
             className="rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase px-5 py-3 shadow-pop-sm inline-flex items-center gap-2"
           >
-            <LogIn className="size-5" /> Join
+            <LogIn className="size-5" /> Join with Code
           </Link>
         </div>
       </div>
@@ -90,4 +94,3 @@ function FamiliesLobby() {
     </div>
   );
 }
-

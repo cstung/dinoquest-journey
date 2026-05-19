@@ -2,34 +2,61 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, select
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.dependencies import get_current_user, require_parent
-from backend.models import ActivityLog, FamilyInvite, FamilyMember, JoinRequest, User
-from backend.schemas.join_request import JoinByCodeRequest, JoinDecision, JoinRequestOut
+from backend.models import ActivityLog, Family, FamilyInvite, FamilyMember, JoinRequest, User
+from backend.realtime import emit_family_event
+from backend.schemas.join_request import (
+    JoinBody,
+    JoinDecision,
+    JoinRequestOut,
+    JoinResult,
+)
 
 router = APIRouter()
+legacy_router = APIRouter()
 
 
-@router.post("/join", response_model=JoinRequestOut, status_code=status.HTTP_201_CREATED)
+@router.post("/join", response_model=JoinResult)
 async def join_family(
-    body: JoinByCodeRequest,
+    body: JoinBody,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> JoinRequestOut:
-    now = datetime.now(timezone.utc)
-    filters = [FamilyInvite.revoked.is_(False), FamilyInvite.expires_at >= now]
-    if body.code:
-        filters.append(FamilyInvite.code == body.code.replace(" ", ""))
-    if body.qr_token:
-        filters.append(FamilyInvite.qr_token == body.qr_token)
+) -> JoinResult:
+    code = body.code.replace(" ", "") if body.code else None
+    token = body.qr_token.strip() if body.qr_token else None
+    if bool(code) == bool(token):
+        raise HTTPException(status_code=400, detail="Provide either code or qr_token")
 
-    invite = (await db.execute(select(FamilyInvite).where(and_(*filters)))).scalar_one_or_none()
+    invite_lookup = code if code else token
+    if code:
+        invite = (
+            await db.execute(select(FamilyInvite).where(FamilyInvite.code == invite_lookup))
+        ).scalar_one_or_none()
+    else:
+        invite = (
+            await db.execute(select(FamilyInvite).where(FamilyInvite.qr_token == invite_lookup))
+        ).scalar_one_or_none()
+
     if not invite:
-        raise HTTPException(status_code=404, detail="Invite not found or expired")
+        raise HTTPException(status_code=404, detail="Invalid invite code")
+    if invite.revoked:
+        raise HTTPException(status_code=400, detail="This invite code has been revoked")
+    invite_expires_at = invite.expires_at
+    if invite_expires_at.tzinfo is None:
+        invite_expires_at = invite_expires_at.replace(tzinfo=timezone.utc)
+    if invite_expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="This invite code has expired")
+    if invite.used_by is not None:
+        raise HTTPException(status_code=400, detail="This invite code has already been used")
+
+    family = await db.get(Family, invite.family_id)
+    if not family or family.is_deleted:
+        raise HTTPException(status_code=404, detail="Family not found")
 
     existing_member = (
         await db.execute(
@@ -40,48 +67,50 @@ async def join_family(
         )
     ).scalar_one_or_none()
     if existing_member:
-        raise HTTPException(status_code=400, detail="Already a member of this family")
+        raise HTTPException(status_code=400, detail="You are already a member of this family")
 
-    pending = (
-        await db.execute(
-            select(JoinRequest).where(
-                JoinRequest.family_id == invite.family_id,
-                JoinRequest.user_id == current_user.id,
-                JoinRequest.status == "pending",
-            )
+    joined_at = datetime.now(timezone.utc)
+    db.add(
+        FamilyMember(
+            family_id=invite.family_id,
+            user_id=current_user.id,
+            role=invite.role,
+            joined_at=joined_at,
         )
-    ).scalar_one_or_none()
-    if pending:
-        raise HTTPException(status_code=400, detail="Join request already pending")
-
-    join_request = JoinRequest(
-        family_id=invite.family_id,
-        user_id=current_user.id,
-        status="pending",
     )
-    db.add(join_request)
+
+    invite.used_by = current_user.id
+    invite.used_at = joined_at
+
     db.add(
         ActivityLog(
             family_id=invite.family_id,
             user_id=current_user.id,
-            event_type="join_requested",
-            payload={"invite_id": invite.id},
-            is_audit=True,
+            event_type="member_joined",
+            payload={"role": invite.role, "via": "invite_code"},
+            is_audit=False,
         )
     )
+
     await db.commit()
-    await db.refresh(join_request)
-    return JoinRequestOut(
-        id=join_request.id,
-        family_id=join_request.family_id,
-        user_id=join_request.user_id,
-        username=current_user.username,
-        status=join_request.status,
-        requested_at=join_request.requested_at,
+
+    await emit_family_event(
+        invite.family_id,
+        "member_joined",
+        {
+            "userId": current_user.id,
+            "username": current_user.username,
+            "role": invite.role,
+        },
+    )
+    return JoinResult(
+        family_id=family.id,
+        family_name=family.name,
+        role=invite.role,
     )
 
 
-@router.get("/families/{family_id}/join-requests", response_model=list[JoinRequestOut])
+@legacy_router.get("/families/{family_id}/join-requests", response_model=list[JoinRequestOut])
 async def list_join_requests(
     parent_member: FamilyMember = Depends(require_parent),
     db: AsyncSession = Depends(get_db),
@@ -108,7 +137,7 @@ async def list_join_requests(
     ]
 
 
-@router.patch("/families/{family_id}/join-requests/{join_request_id}", response_model=JoinRequestOut)
+@legacy_router.patch("/families/{family_id}/join-requests/{join_request_id}", response_model=JoinRequestOut)
 async def decide_join_request(
     join_request_id: int,
     body: JoinDecision,
@@ -178,4 +207,3 @@ async def decide_join_request(
         status=req.status,
         requested_at=req.requested_at,
     )
-

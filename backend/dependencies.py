@@ -56,3 +56,11 @@ async def require_parent(member: FamilyMember = Depends(get_active_membership)) 
     if member.role != "parent":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Parent/Admin role required")
     return member
+
+
+async def require_superadmin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if current_user.global_role != "superadmin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin access required")
+    return current_user

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
@@ -47,11 +47,14 @@ async def register(
             raise HTTPException(status_code=400, detail="Username already taken")
         raise HTTPException(status_code=400, detail="Email already in use")
 
+    user_count = (await db.execute(select(func.count()).select_from(User))).scalar_one()
+    is_first_user = user_count == 0
+
     user = User(
         username=body.username,
         email=body.email,
         hashed_password=hash_password(body.password),
-        global_role="user",
+        global_role="superadmin" if is_first_user else "user",
         is_active=True,
     )
     db.add(user)
