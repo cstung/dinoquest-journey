@@ -167,7 +167,11 @@ function UserMenu() {
           <div className="text-xs text-muted-foreground truncate">{user?.email}</div>
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>Profile</DropdownMenuItem>
+        <DropdownMenuItem asChild disabled={!user?.id}>
+          <Link to="/profile/$userId" params={{ userId: String(user?.id ?? "") }}>
+            Profile
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem>Settings</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
