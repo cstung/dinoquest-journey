@@ -68,7 +68,7 @@ export const Route = createFileRoute("/profile/$userId")({
   component: KidProfilePage,
 });
 
-// ---------- Mock data layer (would be replaced by API calls) ----------
+// ---------- Profile data types ----------
 
 const FAV_SUBJECTS = ["Math", "Science", "Reading", "Art", "Music", "PE", "Other"] as const;
 const GENDERS = ["Boy", "Girl", "Prefer not to say"] as const;
@@ -129,7 +129,51 @@ interface ActivityEv {
   payload: Record<string, any>;
 }
 
-const DEFAULT_STATS: Stats = {
+interface ActivityApiItem {
+  id: number;
+  eventType: string;
+  createdAt: string;
+  payload: Record<string, any> | null;
+  userId: number | null;
+}
+
+interface ActivityApiPage {
+  items: ActivityApiItem[];
+}
+
+interface LeaderboardEntry {
+  userId: number;
+  level: number;
+  xp: number;
+}
+
+interface LeaderboardPage {
+  items: LeaderboardEntry[];
+}
+
+interface QuestAssignedMember {
+  userId: number;
+  status: string;
+  completedAt: string | null;
+}
+
+interface QuestItem {
+  assignedMembers: QuestAssignedMember[];
+}
+
+interface QuestPage {
+  items: QuestItem[];
+}
+
+interface TestItem {
+  assignedMembers: QuestAssignedMember[];
+}
+
+interface TestPage {
+  items: TestItem[];
+}
+
+const EMPTY_STATS: Stats = {
   level: 0,
   total_xp: 0,
   xp_to_next_level: 1,
@@ -182,11 +226,14 @@ function daysUntilBirthday(iso: string | null): number | null {
 }
 
 function eventText(ev: ActivityEv): { icon: string; text: string; color: string } {
+  const questTitle = ev.payload.quest_title ?? ev.payload.title ?? "a quest";
+  const testTitle = ev.payload.test_title ?? ev.payload.title ?? "a test";
+  const score = ev.payload.score ?? ev.payload.score_pct ?? 0;
   switch (ev.event_type) {
     case "quest_completed":
-      return { icon: "⚔️", color: "bg-success/15 text-success-foreground", text: `Completed "${ev.payload.quest_title}" (+${ev.payload.xp} XP)` };
+      return { icon: "⚔️", color: "bg-success/15 text-success-foreground", text: `Completed "${questTitle}" (+${ev.payload.xp ?? 0} XP)` };
     case "test_completed":
-      return { icon: "🎬", color: "bg-info/15 text-info-foreground", text: `Scored ${ev.payload.score}% on "${ev.payload.test_title}"` };
+      return { icon: "🎬", color: "bg-info/15 text-info-foreground", text: `Scored ${score}% on "${testTitle}"` };
     case "level_up":
       return { icon: "🚀", color: "bg-warning/15 text-warning-foreground", text: `Reached Level ${ev.payload.level}!` };
     case "achievement_earned":
@@ -229,33 +276,122 @@ function KidProfilePage() {
     queryKey: ["profile", userId],
     queryFn: () => apiRequest<ProfileData>(`/api/users/${userId}/profile`),
     enabled: !!userId,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
-  const { data: statsData, isLoading: statsLoading } = useQuery({
-    queryKey: ["member-stats", activeFamilyId, userId],
-    queryFn: () => apiRequest<Stats>(`/api/families/${activeFamilyId}/members/${userId}/stats`),
+  const { data: leaderboardData, isLoading: leaderboardLoading } = useQuery({
+    queryKey: ["profile-leaderboard", activeFamilyId],
+    queryFn: () => apiRequest<LeaderboardPage>(`/api/families/${activeFamilyId}/leaderboard?scope=family&limit=200`),
     enabled: !!activeFamilyId && !!userId,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
-  const { data: achievementsData, isLoading: achievementsLoading } = useQuery({
-    queryKey: ["achievements", activeFamilyId, userId],
-    queryFn: () =>
-      apiRequest<{ earned: Achievement[]; locked: Achievement[] }>(
-        `/api/families/${activeFamilyId}/members/${userId}/achievements`,
-      ),
+  const { data: questsData, isLoading: questsLoading } = useQuery({
+    queryKey: ["profile-quests", activeFamilyId],
+    queryFn: () => apiRequest<QuestPage>(`/api/families/${activeFamilyId}/quests?limit=100`),
     enabled: !!activeFamilyId && !!userId,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
-  const { data: activityData } = useQuery({
+  const { data: testsData, isLoading: testsLoading } = useQuery({
+    queryKey: ["profile-tests", activeFamilyId],
+    queryFn: () => apiRequest<TestPage>(`/api/families/${activeFamilyId}/tests?limit=100`),
+    enabled: !!activeFamilyId && !!userId,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ["activity", activeFamilyId, userId],
     queryFn: () =>
-      apiRequest<{ events: ActivityEv[] }>(
-        `/api/families/${activeFamilyId}/activity?user_id=${userId}&limit=8`,
+      apiRequest<ActivityApiPage>(
+        `/api/families/${activeFamilyId}/activity?limit=50`,
       ),
     enabled: !!activeFamilyId && !!userId,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
-  const earned = achievementsData?.earned ?? [];
-  const locked = achievementsData?.locked ?? [];
-  const activity = activityData?.events ?? [];
-  const stats = statsData ?? DEFAULT_STATS;
-  const isLoading = profileLoading || statsLoading || achievementsLoading;
+  const allEventsForUser = useMemo(() => {
+    const targetId = Number(userId);
+    const rows = activityData?.items ?? [];
+    return rows.filter((row) => row.userId === targetId);
+  }, [activityData?.items, userId]);
+  const activity = useMemo<ActivityEv[]>(() => {
+    const normalize = (eventType: string): ActivityEv["event_type"] => {
+      const known = new Set<ActivityEv["event_type"]>([
+        "quest_completed",
+        "test_completed",
+        "level_up",
+        "achievement_earned",
+        "reward_claimed",
+        "streak_milestone",
+        "xp_earned",
+      ]);
+      return known.has(eventType as ActivityEv["event_type"]) ? (eventType as ActivityEv["event_type"]) : "xp_earned";
+    };
+    return allEventsForUser.slice(0, 8).map((row) => ({
+      id: row.id,
+      event_type: normalize(row.eventType),
+      created_at: row.createdAt,
+      payload: row.payload ?? {},
+    }));
+  }, [allEventsForUser]);
+  const earned = useMemo<Achievement[]>(() => {
+    return allEventsForUser
+      .filter((row) => row.eventType === "achievement_earned")
+      .slice(0, 24)
+      .map((row, idx) => ({
+        id: row.id,
+        name: String(row.payload?.achievement_name ?? `Achievement ${idx + 1}`),
+        description: "Earned in family activity",
+        tier: "bronze",
+        icon: "🏅",
+        earned_at: row.createdAt,
+      }));
+  }, [allEventsForUser]);
+  const locked: Achievement[] = [];
+  const stats = useMemo<Stats>(() => {
+    const targetId = Number(userId);
+    const leaderboard = leaderboardData?.items?.find((x) => x.userId === targetId);
+    const questAssignments =
+      (questsData?.items ?? []).flatMap((q) => q.assignedMembers ?? []).filter((m) => m.userId === targetId);
+    const testAssignments =
+      (testsData?.items ?? []).flatMap((t) => t.assignedMembers ?? []).filter((m) => m.userId === targetId);
+    const totalQuestsCompleted = questAssignments.filter((m) => m.status === "completed").length;
+    const totalQuestsPending = questAssignments.filter((m) => m.status !== "completed").length;
+    const totalTestsCompleted = testAssignments.filter((m) => m.status === "completed").length;
+    const scores = allEventsForUser
+      .filter((e) => e.eventType === "test_completed")
+      .map((e) => Number(e.payload?.score ?? e.payload?.score_pct ?? 0))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - 6);
+    const questsPerDay = new Array(7).fill(0);
+    for (const qa of questAssignments) {
+      if (!qa.completedAt) continue;
+      const d = new Date(qa.completedAt);
+      if (d < start || d > now) continue;
+      const idx = Math.floor((d.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (idx >= 0 && idx < 7) questsPerDay[idx] += 1;
+    }
+    return {
+      ...EMPTY_STATS,
+      level: leaderboard?.level ?? 1,
+      total_xp: leaderboard?.xp ?? 0,
+      xp_to_next_level: Math.max((leaderboard?.level ?? 1) * 100, (leaderboard?.xp ?? 0) + 1),
+      total_quests_completed: totalQuestsCompleted,
+      total_quests_pending: totalQuestsPending,
+      total_tests_completed: totalTestsCompleted,
+      best_test_score_pct: scores.length ? Math.max(...scores) : null,
+      avg_test_score_pct: avgScore,
+      perfect_scores_count: scores.filter((s) => s >= 100).length,
+      quests_last_7_days: questsPerDay,
+      test_score_history: scores.slice(-10),
+    };
+  }, [leaderboardData?.items, questsData?.items, testsData?.items, allEventsForUser, userId]);
+  const isLoading = profileLoading || leaderboardLoading || questsLoading || testsLoading || activityLoading;
   const selfFallbackProfile: ProfileData | null =
     isSelf && authUser
       ? {
@@ -272,7 +408,7 @@ function KidProfilePage() {
           catchphrase: "",
           favorite_subject: "Other",
           fun_fact: "",
-          joined_at: new Date().toISOString(),
+          joined_at: "1970-01-01T00:00:00Z",
         }
       : null;
   const resolvedProfile = profile ?? selfFallbackProfile;
@@ -1250,3 +1386,4 @@ function ConfettiStrip() {
     </div>
   );
 }
+
