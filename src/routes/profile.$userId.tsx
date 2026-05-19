@@ -210,6 +210,7 @@ function KidProfilePage() {
   const activeFamilyId = useFamilyStore((s) => s.activeFamilyId);
   const activeFamilyRole = useFamilyStore((s) => s.activeFamilyRole);
   const numericId = Number(userId);
+  const isSuperadmin = authUser?.globalRole === "superadmin";
 
   const { data: familyDetail } = useQuery({
     queryKey: ["family", activeFamilyId],
@@ -221,7 +222,8 @@ function KidProfilePage() {
   // Viewer resolution
   const isSelf = authUser?.id === numericId;
   const isParent = activeFamilyRole === "parent";
-  const allowed = isSelf || isParent;
+  const canManageFamilyProfiles = isParent || isSuperadmin;
+  const allowed = isSelf || canManageFamilyProfiles;
 
   const { data: profile, isLoading: profileLoading, error: profileError } = useQuery({
     queryKey: ["profile", userId],
@@ -330,7 +332,7 @@ function KidProfilePage() {
     );
   }
 
-  if (!activeFamilyId) {
+  if (!activeFamilyId && !isSelf && !isSuperadmin) {
     return (
       <div className="max-w-md mx-auto mt-20 text-center space-y-4">
         <div className="text-7xl">👨‍👩‍👧</div>
