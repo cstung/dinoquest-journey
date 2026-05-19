@@ -10,7 +10,7 @@ export interface Family {
   ownerId: number;
   memberCount: number;
   createdAt: string;
-  myRole: "parent" | "child";
+  myRole: "parent" | "child" | "superadmin";
 }
 
 export interface Member {
@@ -28,7 +28,7 @@ export interface Invite {
   familyName: string | null;
   role: "parent" | "child";
   code: string;
-  qrToken: string;
+  joinLink: string;
   expiresAt: string;
   usedBy: number | null;
   revoked: boolean;

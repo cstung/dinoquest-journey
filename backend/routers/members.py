@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from backend.database import get_db
-from backend.dependencies import get_active_membership, require_parent
+from backend.dependencies import get_active_membership, require_parent_or_superadmin
 from backend.models import ActivityLog, Family, FamilyMember, User
 from backend.schemas.member import MemberOut, MemberRoleUpdate
 from backend.services.family_service import auto_promote_or_delete
@@ -39,9 +39,10 @@ async def list_members(
 
 @router.patch("/{family_id}/members/{user_id}/role", response_model=MemberOut)
 async def update_member_role(
+    family_id: int,
     user_id: int,
     body: MemberRoleUpdate,
-    parent_member: FamilyMember = Depends(require_parent),
+    current_user: User = Depends(require_parent_or_superadmin),
     db: AsyncSession = Depends(get_db),
 ) -> MemberOut:
     target = (
@@ -49,7 +50,7 @@ async def update_member_role(
             select(FamilyMember, User)
             .join(User, User.id == FamilyMember.user_id)
             .where(
-                FamilyMember.family_id == parent_member.family_id,
+                FamilyMember.family_id == family_id,
                 FamilyMember.user_id == user_id,
             )
         )
@@ -58,15 +59,15 @@ async def update_member_role(
         raise HTTPException(status_code=404, detail="Member not found")
 
     member_row, user_row = target
-    family = await db.get(Family, parent_member.family_id)
+    family = await db.get(Family, family_id)
     if family and family.owner_id == user_id and body.role != "parent":
         raise HTTPException(status_code=400, detail="Family owner must remain a parent")
 
     member_row.role = body.role
     db.add(
         ActivityLog(
-            family_id=parent_member.family_id,
-            user_id=parent_member.user_id,
+            family_id=family_id,
+            user_id=current_user.id,
             event_type="role_changed",
             payload={"target_user_id": user_id, "role": body.role},
             is_audit=True,
@@ -91,14 +92,15 @@ async def update_member_role(
     response_model=None,
 )
 async def remove_member(
+    family_id: int,
     user_id: int,
-    parent_member: FamilyMember = Depends(require_parent),
+    current_user: User = Depends(require_parent_or_superadmin),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     target = (
         await db.execute(
             select(FamilyMember).where(
-                FamilyMember.family_id == parent_member.family_id,
+                FamilyMember.family_id == family_id,
                 FamilyMember.user_id == user_id,
             )
         )
@@ -106,7 +108,7 @@ async def remove_member(
     if not target:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    family = await db.get(Family, parent_member.family_id)
+    family = await db.get(Family, family_id)
     if not family or family.is_deleted:
         raise HTTPException(status_code=404, detail="Family not found")
 
@@ -117,8 +119,8 @@ async def remove_member(
 
     db.add(
         ActivityLog(
-            family_id=parent_member.family_id,
-            user_id=parent_member.user_id,
+            family_id=family_id,
+            user_id=current_user.id,
             event_type="member_removed",
             payload={"target_user_id": user_id},
             is_audit=True,

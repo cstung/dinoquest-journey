@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useAuthStore } from "@/store";
+import { useAuthStore, useFamilyStore } from "@/store";
 import { apiRequest } from "@/lib/api";
 
 type LoginResponse = {
@@ -8,12 +8,15 @@ type LoginResponse = {
   username: string;
   email: string | null;
   globalRole: "user" | "superadmin";
+  activeFamilyId: number | null;
+  role: "parent" | "child" | null;
 };
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
 function LoginPage() {
   const login = useAuthStore((s) => s.login);
+  const setActiveFamily = useFamilyStore((s) => s.setActiveFamily);
   const nav = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -39,7 +42,12 @@ function LoginPage() {
         xpToNext: 100,
         streak: 0,
       });
-      nav({ to: "/" });
+      if (user.activeFamilyId && user.role) {
+        setActiveFamily(user.activeFamilyId, user.role);
+        nav({ to: "/families/$familyId", params: { familyId: String(user.activeFamilyId) } });
+      } else {
+        nav({ to: "/families" });
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -88,7 +96,7 @@ function LoginPage() {
             {loading ? "Logging in..." : "Log In"}
           </button>
           <p className="text-center text-sm text-muted-foreground">
-            No account?{" "}
+            Don't have an account?{" "}
             <Link to="/register" className="text-primary font-bold hover:underline">
               Register
             </Link>

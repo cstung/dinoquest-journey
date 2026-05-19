@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"]
     )
+    app_base_url: str = "http://localhost:3000"
     cookie_domain: str = ""
     tz: str = "Asia/Ho_Chi_Minh"
     db_path: str = "./data/dinoquest.db"

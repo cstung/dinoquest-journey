@@ -35,14 +35,14 @@ function FamilyDetail() {
   const familyIdNum = Number(familyId);
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("members");
   const [message, setMessage] = useState<string | null>(null);
-  const [showQr, setShowQr] = useState(false);
   const [inviteRole, setInviteRole] = useState<"parent" | "child">("child");
+  const [latestJoinLink, setLatestJoinLink] = useState<string | null>(null);
 
   const detailQuery = useFamilyDetail(familyIdNum);
-  const canManage = detailQuery.data?.myRole === "parent";
   const isSuperadmin = user?.globalRole === "superadmin";
+  const canManageMembers = isSuperadmin || detailQuery.data?.myRole === "parent";
   const membersQuery = useFamilyMembers(familyIdNum);
-  const invitesQuery = useFamilyInvites(familyIdNum, tab === "invites" && canManage);
+  const invitesQuery = useFamilyInvites(familyIdNum, tab === "invites" && isSuperadmin);
   const activityQuery = useFamilyActivity(familyIdNum, "activity", tab === "activity");
   const auditQuery = useFamilyActivity(familyIdNum, "audit", tab === "audit");
   const createInvite = useCreateInvite(familyIdNum);
@@ -55,7 +55,6 @@ function FamilyDetail() {
 
   const family = detailQuery.data;
   const members = membersQuery.data ?? [];
-  const isOwner = !!user && !!family && user.id === family.ownerId;
   const [name, setName] = useState("");
   const [motto, setMotto] = useState("");
 
@@ -199,7 +198,7 @@ function FamilyDetail() {
                 <span className="text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-info/15 text-info">
                   {m.role}
                 </span>
-                {canManage && (
+                {canManageMembers && (
                   <div className="flex items-center gap-2">
                     <select
                       value={m.role}
@@ -239,26 +238,41 @@ function FamilyDetail() {
             </select>
             <button
               disabled={!isSuperadmin || createInvite.isPending}
-              onClick={() => createInvite.mutate({ role: inviteRole })}
+              onClick={() =>
+                createInvite.mutate(
+                  { role: inviteRole },
+                  {
+                    onSuccess: (invite) => {
+                      setLatestJoinLink(invite.joinLink);
+                    },
+                  },
+                )
+              }
               className="rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase px-5 py-3 shadow-pop-sm disabled:opacity-60"
             >
               {createInvite.isPending ? "Generating..." : "+ Generate New Invite"}
             </button>
-            <button
-              disabled={!canManage}
-              onClick={() => setShowQr((v) => !v)}
-              className="rounded-2xl bg-secondary font-display font-extrabold uppercase px-5 py-3 disabled:opacity-60"
-            >
-              {showQr ? "Hide QR" : "Show Latest QR"}
-            </button>
           </div>
-          {showQr && (
-            <div className="rounded-2xl bg-card border-2 border-border p-4 inline-block">
-              <img
-                src={`/api/families/${familyIdNum}/invite/qr?ts=${Date.now()}`}
-                alt="Family invite QR"
-                className="size-56 rounded-xl bg-white p-2"
-              />
+          {latestJoinLink && (
+            <div className="rounded-2xl bg-card border-2 border-border p-4 space-y-2">
+              <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Latest Join Link</p>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={latestJoinLink}
+                  className="flex-1 rounded-xl border-2 border-border bg-background px-3 py-2 text-xs font-bold"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(latestJoinLink);
+                    setMessage("Join link copied.");
+                  }}
+                  className="rounded-xl bg-secondary font-display font-extrabold uppercase text-xs px-4"
+                >
+                  Copy Link
+                </button>
+              </div>
             </div>
           )}
           {invitesQuery.isLoading ? (
@@ -287,9 +301,23 @@ function FamilyDetail() {
                       Revoke
                     </button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Token: {inv.qrToken.slice(0, 10)}...
-                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      readOnly
+                      value={inv.joinLink}
+                      className="flex-1 rounded-xl border border-border bg-background px-2 py-1.5 text-xs font-bold"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(inv.joinLink);
+                        setMessage("Join link copied.");
+                      }}
+                      className="rounded-lg bg-secondary px-2 py-1 text-xs font-bold"
+                    >
+                      Copy
+                    </button>
+                  </div>
                 </div>
               ))}
               {(invitesQuery.data ?? []).length === 0 && (
@@ -359,12 +387,12 @@ function FamilyDetail() {
           </Field>
           {settingsError && <p className="text-sm text-destructive">{settingsError}</p>}
           <button
-            disabled={!canManage || updateFamily.isPending}
+            disabled={!canManageMembers || updateFamily.isPending}
             className="rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase px-6 py-3 btn-pop disabled:opacity-60"
           >
             {updateFamily.isPending ? "Saving..." : "Save"}
           </button>
-          {isOwner && (
+          {isSuperadmin && (
             <button
               type="button"
               onClick={onDeleteFamily}

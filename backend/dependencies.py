@@ -39,6 +39,13 @@ async def get_active_membership(
     if not family or family.is_deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Family not found")
 
+    if current_user.global_role == "superadmin":
+        return FamilyMember(
+            family_id=family_id,
+            user_id=current_user.id,
+            role="parent",
+        )
+
     member = (
         await db.execute(
             select(FamilyMember).where(
@@ -63,4 +70,17 @@ async def require_superadmin(
 ) -> User:
     if current_user.global_role != "superadmin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin access required")
+    return current_user
+
+
+async def require_parent_or_superadmin(
+    family_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if current_user.global_role == "superadmin":
+        return current_user
+    member = await db.get(FamilyMember, (family_id, current_user.id))
+    if not member or member.role != "parent":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Parent or superadmin access required")
     return current_user

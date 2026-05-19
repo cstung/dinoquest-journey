@@ -34,6 +34,19 @@ async def list_families(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[FamilyWithRoleOut]:
+    if current_user.global_role == "superadmin":
+        rows = await db.execute(
+            select(Family, func.count(FamilyMember.user_id).label("member_count"))
+            .outerjoin(FamilyMember, FamilyMember.family_id == Family.id)
+            .where(Family.is_deleted.is_(False))
+            .group_by(Family.id)
+            .order_by(Family.created_at.desc())
+        )
+        return [
+            await _family_out(family, int(member_count), "superadmin")  # type: ignore[arg-type]
+            for family, member_count in rows.all()
+        ]
+
     rows = await db.execute(
         select(Family, FamilyMember.role, func.count(FamilyMember.user_id).over(partition_by=Family.id).label("member_count"))
         .join(FamilyMember, FamilyMember.family_id == Family.id)
@@ -70,13 +83,6 @@ async def create_family(
     db.add(family)
     await db.flush()
     db.add(
-        FamilyMember(
-            family_id=family.id,
-            user_id=current_user.id,
-            role="parent",
-        )
-    )
-    db.add(
         ActivityLog(
             family_id=family.id,
             user_id=current_user.id,
@@ -87,23 +93,39 @@ async def create_family(
     )
     await db.commit()
     await db.refresh(family)
-    return await _family_out(family, 1)
+    return await _family_out(family, 0)
 
 
 @router.get("/{family_id}", response_model=FamilyWithRoleOut)
 async def get_family(
-    membership: FamilyMember = Depends(get_active_membership),
+    family_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> FamilyWithRoleOut:
-    family = await db.get(Family, membership.family_id)
+    family = await db.get(Family, family_id)
     if not family or family.is_deleted:
         raise HTTPException(status_code=404, detail="Family not found")
+
+    my_role = "superadmin"
+    if current_user.global_role != "superadmin":
+        membership = (
+            await db.execute(
+                select(FamilyMember).where(
+                    FamilyMember.family_id == family_id,
+                    FamilyMember.user_id == current_user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not membership:
+            raise HTTPException(status_code=403, detail="Not a member of this family")
+        my_role = membership.role
+
     member_count = (
         await db.execute(
-            select(func.count(FamilyMember.user_id)).where(FamilyMember.family_id == membership.family_id)
+            select(func.count(FamilyMember.user_id)).where(FamilyMember.family_id == family_id)
         )
     ).scalar_one()
-    return await _family_out(family, int(member_count), membership.role)  # type: ignore[arg-type]
+    return await _family_out(family, int(member_count), my_role)  # type: ignore[arg-type]
 
 
 @router.patch("/{family_id}", response_model=FamilyOut)
@@ -150,20 +172,19 @@ async def update_family(
     response_model=None,
 )
 async def delete_family(
-    membership: FamilyMember = Depends(get_active_membership),
+    family_id: int,
+    current_user: User = Depends(require_superadmin),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    family = await db.get(Family, membership.family_id)
+    family = await db.get(Family, family_id)
     if not family or family.is_deleted:
         raise HTTPException(status_code=404, detail="Family not found")
-    if family.owner_id != membership.user_id:
-        raise HTTPException(status_code=403, detail="Only the family owner can delete the family")
 
     await soft_delete_family(family, db)
     db.add(
         ActivityLog(
             family_id=family.id,
-            user_id=membership.user_id,
+            user_id=current_user.id,
             event_type="family_deleted",
             payload=None,
             is_audit=True,

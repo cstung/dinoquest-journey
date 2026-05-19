@@ -13,7 +13,6 @@ from backend.routers import (
     auth,
     families,
     invites,
-    join_requests,
     leaderboard,
     members,
     pets,
@@ -39,7 +38,6 @@ def create_app() -> FastAPI:
     app.include_router(families.router, prefix="/api/families", tags=["families"])
     app.include_router(members.router, prefix="/api/families", tags=["members"])
     app.include_router(invites.router, prefix="/api/families", tags=["invites"])
-    app.include_router(join_requests.router, prefix="/api", tags=["join-requests"])
     app.include_router(activity_log.router, prefix="/api/families", tags=["activity"])
     app.include_router(quests.router, prefix="/api/families", tags=["quests"])
     app.include_router(tests.router, prefix="/api/families", tags=["tests"])

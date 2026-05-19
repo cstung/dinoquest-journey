@@ -48,6 +48,7 @@ function RootComponent() {
   const logout = useAuthStore((s) => s.logout);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const activeFamilyId = useFamilyStore((s) => s.activeFamilyId);
+  const setActiveFamily = useFamilyStore((s) => s.setActiveFamily);
   const [authCheckDone, setAuthCheckDone] = useState(isAuthPage);
 
   useFamilyRealtime(activeFamilyId, isAuthenticated, queryClient);
@@ -60,7 +61,14 @@ function RootComponent() {
 
     setAuthCheckDone(false);
     let active = true;
-    apiRequest<{ id: number; username: string; email: string | null; globalRole: "user" | "superadmin" }>(
+    apiRequest<{
+      id: number;
+      username: string;
+      email: string | null;
+      globalRole: "user" | "superadmin";
+      activeFamilyId: number | null;
+      role: "parent" | "child" | null;
+    }>(
       "/api/auth/me",
     )
       .then((user) => {
@@ -75,6 +83,9 @@ function RootComponent() {
           xpToNext: 100,
           streak: 0,
         });
+        if (user.activeFamilyId && user.role) {
+          setActiveFamily(user.activeFamilyId, user.role);
+        }
         setAuthCheckDone(true);
       })
       .catch(() => {
@@ -86,7 +97,7 @@ function RootComponent() {
     return () => {
       active = false;
     };
-  }, [isAuthPage, login, logout, navigate]);
+  }, [isAuthPage, login, logout, navigate, setActiveFamily]);
 
   return (
     <QueryClientProvider client={queryClient}>

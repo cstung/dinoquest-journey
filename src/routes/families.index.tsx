@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, LogIn, Users, ArrowRight } from "lucide-react";
+import { Plus, Users, ArrowRight } from "lucide-react";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { useFamilies } from "@/hooks/use-families";
 
@@ -36,12 +36,6 @@ function FamiliesLobby() {
               <Plus className="size-5" strokeWidth={3} /> Create
             </Link>
           )}
-          <Link
-            to="/families/join"
-            className="rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase px-5 py-3 shadow-pop-sm inline-flex items-center gap-2"
-          >
-            <LogIn className="size-5" /> Join with Code
-          </Link>
         </div>
       </div>
 

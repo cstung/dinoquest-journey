@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Bell, ChevronDown, Check, Plus, LogIn } from "lucide-react";
+import { Bell, ChevronDown, Check, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useFamilyStore, useAuthStore } from "@/store";
 import {
@@ -86,11 +86,6 @@ function FamilySwitcher() {
             </Link>
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem asChild>
-          <Link to="/families/join" className="flex items-center gap-2">
-            <LogIn className="size-4" /> Join Family
-          </Link>
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

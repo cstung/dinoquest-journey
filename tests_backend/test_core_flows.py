@@ -8,9 +8,16 @@ _seq = itertools.count(1)
 
 
 def _register(client: TestClient, username: str, email: str) -> dict:
+    return _register_with_invite(client, username, email, None)
+
+
+def _register_with_invite(client: TestClient, username: str, email: str, invite_code: str | None) -> dict:
+    payload = {"username": username, "password": "Password12345!", "email": email}
+    if invite_code is not None:
+        payload["inviteCode"] = invite_code
     response = client.post(
         "/api/auth/register",
-        json={"username": username, "password": "Password12345!", "email": email},
+        json=payload,
     )
     assert response.status_code == 201, response.text
     return response.json()
@@ -29,9 +36,7 @@ def _setup_family_with_child(client: TestClient) -> tuple[int, int, TestClient]:
     code = invite.json()["code"]
 
     child_client = TestClient(client.app)
-    _register(child_client, f"child_test_{idx}", f"child_test_{idx}@example.com")
-    join = child_client.post("/api/join", json={"code": code})
-    assert join.status_code == 200, join.text
+    _register_with_invite(child_client, f"child_test_{idx}", f"child_test_{idx}@example.com", code)
     child_user_id = (
         child_client.get(f"/api/families/{family_id}/members")
         .json()
@@ -45,8 +50,15 @@ def test_auth_invite_join_flow(client: TestClient) -> None:
     assert first["globalRole"] == "superadmin"
 
     second_client = TestClient(client.app)
-    second = _register(second_client, "auth_second", "auth_second@example.com")
-    assert second["globalRole"] == "user"
+    second_without_code = second_client.post(
+        "/api/auth/register",
+        json={
+            "username": "auth_second",
+            "password": "Password12345!",
+            "email": "auth_second@example.com",
+        },
+    )
+    assert second_without_code.status_code == 422, second_without_code.text
 
     family = client.post("/api/families", json={"name": "Auth Family"})
     assert family.status_code == 201, family.text
@@ -59,13 +71,20 @@ def test_auth_invite_join_flow(client: TestClient) -> None:
     assert len(invite.json()["code"]) == 6
 
     child_client = TestClient(client.app)
-    _register(child_client, "auth_child", "auth_child@example.com")
-    join = child_client.post("/api/join", json={"code": invite.json()["code"]})
-    assert join.status_code == 200, join.text
-    assert join.json()["familyId"] == family_id
-    assert join.json()["role"] == "child"
+    second = _register_with_invite(child_client, "auth_child", "auth_child@example.com", invite.json()["code"])
+    assert second["globalRole"] == "user"
+    assert second["activeFamilyId"] == family_id
+    assert second["role"] == "child"
 
-    joined_twice = child_client.post("/api/join", json={"code": invite.json()["code"]})
+    joined_twice = TestClient(client.app).post(
+        "/api/auth/register",
+        json={
+            "username": "auth_child_2",
+            "password": "Password12345!",
+            "email": "auth_child_2@example.com",
+            "inviteCode": invite.json()["code"],
+        },
+    )
     assert joined_twice.status_code == 400, joined_twice.text
     assert joined_twice.json()["detail"] == "This invite code has already been used"
 

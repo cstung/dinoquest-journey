@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type Role = "parent" | "child";
+export type Role = "parent" | "child" | "superadmin";
 
 interface User {
   id: number;

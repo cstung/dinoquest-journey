@@ -12,6 +12,7 @@ class RegisterRequest(APIModel):
     username: str
     password: str
     email: EmailStr | None = None
+    invite_code: str | None = None
 
     @field_validator("username")
     @classmethod
@@ -39,9 +40,11 @@ class UserOut(APIModel):
     email: str | None
     global_role: str
     created_at: datetime
+    active_family_id: int | None = None
+    active_family_name: str | None = None
+    role: str | None = None
 
 
 class WsTokenOut(APIModel):
     ws_token: str
     expires_in_seconds: int
-

@@ -8,27 +8,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
 from backend.database import get_db
-from backend.dependencies import require_parent, require_superadmin
-from backend.models import ActivityLog, Family, FamilyInvite, FamilyMember, User
+from backend.dependencies import require_superadmin
+from backend.models import ActivityLog, Family, FamilyInvite, User
 from backend.schemas.invite import InviteCreate, InviteOut
 from backend.services.invite_service import (
     build_expiry,
-    build_qr_png,
-    generate_qr_token,
     generate_unique_invite_code,
 )
 
 router = APIRouter()
 
 
-def _invite_out(invite: FamilyInvite, family_name: str | None) -> InviteOut:
+def _invite_out(invite: FamilyInvite, family_name: str | None, app_base_url: str) -> InviteOut:
+    join_link = f"{app_base_url.rstrip('/')}/register?code={invite.code}"
     return InviteOut(
         id=invite.id,
         family_id=invite.family_id,
         family_name=family_name,
         role=invite.role,
         code=invite.code,
-        qr_token=invite.qr_token,
+        join_link=join_link,
         expires_at=invite.expires_at,
         used_by=invite.used_by,
         revoked=invite.revoked,
@@ -52,7 +51,7 @@ async def create_invite(
         created_by=current_user.id,
         role=body.role,
         code=await generate_unique_invite_code(db),
-        qr_token=generate_qr_token(),
+        qr_token=None,
         expires_at=build_expiry(7),
     )
     db.add(invite)
@@ -67,26 +66,32 @@ async def create_invite(
     )
     await db.commit()
     await db.refresh(invite)
-    return _invite_out(invite, family.name)
+    settings = get_settings()
+    return _invite_out(invite, family.name, settings.app_base_url)
 
 
 @router.get("/{family_id}/invites", response_model=list[InviteOut])
 async def list_invites(
-    parent_member: FamilyMember = Depends(require_parent),
+    family_id: int,
+    _: User = Depends(require_superadmin),
     db: AsyncSession = Depends(get_db),
 ) -> list[InviteOut]:
-    family = await db.get(Family, parent_member.family_id)
+    family = await db.get(Family, family_id)
+    if not family or family.is_deleted:
+        raise HTTPException(status_code=404, detail="Family not found")
+
+    settings = get_settings()
     now = datetime.now(timezone.utc)
     rows = await db.execute(
         select(FamilyInvite)
         .where(
-            FamilyInvite.family_id == parent_member.family_id,
+            FamilyInvite.family_id == family_id,
             FamilyInvite.revoked.is_(False),
             FamilyInvite.expires_at >= now,
         )
         .order_by(FamilyInvite.created_at.desc())
     )
-    return [_invite_out(item, family.name if family else None) for item in rows.scalars().all()]
+    return [_invite_out(item, family.name, settings.app_base_url) for item in rows.scalars().all()]
 
 
 @router.delete(
@@ -96,15 +101,20 @@ async def list_invites(
     response_model=None,
 )
 async def revoke_invite(
+    family_id: int,
     invite_id: int,
-    parent_member: FamilyMember = Depends(require_parent),
+    current_user: User = Depends(require_superadmin),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
+    family = await db.get(Family, family_id)
+    if not family or family.is_deleted:
+        raise HTTPException(status_code=404, detail="Family not found")
+
     invite = (
         await db.execute(
             select(FamilyInvite).where(
                 FamilyInvite.id == invite_id,
-                FamilyInvite.family_id == parent_member.family_id,
+                FamilyInvite.family_id == family_id,
             )
         )
     ).scalar_one_or_none()
@@ -113,8 +123,8 @@ async def revoke_invite(
     invite.revoked = True
     db.add(
         ActivityLog(
-            family_id=parent_member.family_id,
-            user_id=parent_member.user_id,
+            family_id=family_id,
+            user_id=current_user.id,
             event_type="invite_revoked",
             payload={"invite_id": invite_id},
             is_audit=True,
@@ -122,31 +132,3 @@ async def revoke_invite(
     )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.get("/{family_id}/invite/qr")
-async def latest_invite_qr(
-    parent_member: FamilyMember = Depends(require_parent),
-    db: AsyncSession = Depends(get_db),
-) -> Response:
-    now = datetime.now(timezone.utc)
-    invite = (
-        await db.execute(
-            select(FamilyInvite)
-            .where(
-                FamilyInvite.family_id == parent_member.family_id,
-                FamilyInvite.revoked.is_(False),
-                FamilyInvite.expires_at >= now,
-            )
-            .order_by(FamilyInvite.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if not invite:
-        raise HTTPException(status_code=404, detail="No active invite found")
-
-    settings = get_settings()
-    base = settings.allowed_origins[0] if settings.allowed_origins else "http://localhost:3000"
-    join_url = f"{base.rstrip('/')}/families/join?token={invite.qr_token}"
-    png = build_qr_png(join_url)
-    return Response(content=png, media_type="image/png")

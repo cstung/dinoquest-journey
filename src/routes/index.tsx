@@ -67,10 +67,10 @@ function HomePage() {
               Create
             </Link>
             <Link
-              to="/families/join"
+              to="/register"
               className="rounded-2xl bg-card border-2 border-border font-display font-extrabold uppercase px-6 py-3"
             >
-              Join
+              Register
             </Link>
           </div>
         </div>
