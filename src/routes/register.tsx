@@ -138,8 +138,10 @@ function RegisterPage() {
                 onChange={(e) => setInviteCode(e.target.value)}
                 className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary tracking-[0.2em] uppercase"
                 placeholder="042819"
-                required
               />
+              <p className="text-xs text-muted-foreground">
+                Required for invited users. Leave blank only for first-time superadmin setup.
+              </p>
             </label>
           )}
           <p className="text-xs text-muted-foreground">Password must be at least 12 characters.</p>
