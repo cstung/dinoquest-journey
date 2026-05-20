@@ -76,8 +76,8 @@ function QuestDetail() {
   const onComplete = async () => {
     setCompleteMessage(null);
     try {
-      const result = await completeMutation.mutateAsync();
-      setCompleteMessage(`Completed! +${result.xpAwarded} XP (Level ${result.level})`);
+      await completeMutation.mutateAsync();
+      setCompleteMessage("Completion request sent. Waiting for parent approval.");
       await query.refetch();
     } catch (err) {
       setCompleteMessage((err as Error).message);
@@ -301,11 +301,17 @@ function QuestDetail() {
               disabled={completeMutation.isPending || !myAssignment}
               className="w-full rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase py-4 btn-pop disabled:opacity-60"
             >
-              {completeMutation.isPending ? "Completing..." : "Mark as Complete"}
+              {completeMutation.isPending ? "Requesting..." : "Mark as Complete"}
             </button>
           ) : (
             <div className="w-full rounded-2xl bg-secondary font-display font-extrabold uppercase py-4 text-center">
-              {quest.status === "completed" ? "Completed" : quest.status === "missed" ? "Missed" : "Parent View"}
+              {quest.status === "completed"
+                ? "Completed"
+                : quest.status === "pending_approval"
+                  ? "Pending Approval"
+                  : quest.status === "missed"
+                    ? "Missed"
+                    : "Parent View"}
             </div>
           )}
           {canManage && !editMode && (

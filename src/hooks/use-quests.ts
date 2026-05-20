@@ -8,7 +8,8 @@ export interface AssignedMember {
   userId: number;
   username: string;
   avatarColor: string | null;
-  status: "pending" | "completed" | "missed";
+  status: "pending" | "pending_approval" | "completed" | "missed";
+  completionRequestedAt: string | null;
   completedAt: string | null;
   cycleIndex: number;
   cycleDueAt: string | null;
@@ -21,12 +22,13 @@ export interface QuestItem {
   description: string | null;
   category: string;
   difficulty: string;
+  thumbnailUrl: string | null;
   xpReward: number;
   dueDate: string | null;
   frequency: QuestFrequency;
   nextOccurrenceAt: string | null;
   recurrenceEndAt: string | null;
-  status: "pending" | "completed" | "missed";
+  status: "pending" | "pending_approval" | "completed" | "missed";
   assignedMembers: AssignedMember[];
   createdAt: string;
 }
@@ -48,7 +50,7 @@ export interface QuestCompleteResult {
 
 export function useQuests(
   familyId: number | null,
-  options?: { search?: string; status?: "all" | "pending" | "completed" | "missed" },
+  options?: { search?: string; status?: "all" | "pending" | "pending_approval" | "completed" | "missed" },
 ) {
   return useQuery({
     queryKey: ["quests", familyId, options?.search ?? "", options?.status ?? "all"],
@@ -79,6 +81,7 @@ export function useCreateQuest(familyId: number | null) {
       description?: string | null;
       category?: string;
       difficulty?: string;
+      thumbnailUrl?: string | null;
       xpReward?: number;
       dueDate?: string | null;
       frequency?: QuestFrequency;
@@ -109,6 +112,22 @@ export function useCompleteQuest(familyId: number | null, assignmentId: number |
   });
 }
 
+export function useResolveQuestCompletion(familyId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { assignmentId: number; decision: "approve" | "reject" }) =>
+      apiRequest<QuestCompleteResult>(`/api/families/${familyId}/quest-assignments/${body.assignmentId}/resolve`, {
+        method: "POST",
+        body: JSON.stringify({ decision: body.decision }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quests", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["quest", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["leaderboard", familyId] });
+    },
+  });
+}
+
 export function useUpdateQuest(familyId: number | null, questId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -117,6 +136,7 @@ export function useUpdateQuest(familyId: number | null, questId: number | null) 
       description?: string | null;
       category?: string;
       difficulty?: string;
+      thumbnailUrl?: string | null;
       xpReward?: number;
       dueDate?: string | null;
       frequency?: QuestFrequency;

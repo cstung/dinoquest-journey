@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useFamilyStore } from "@/store";
 import { type QuestFrequency, useCreateQuest } from "@/hooks/use-quests";
 import { useFamilyMembers } from "@/hooks/use-families";
@@ -21,6 +22,8 @@ function NewQuest() {
   const [dueDate, setDueDate] = useState("");
   const [frequency, setFrequency] = useState<QuestFrequency>("once");
   const [recurrenceEndAt, setRecurrenceEndAt] = useState("");
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [thumbnailFileName, setThumbnailFileName] = useState<string | null>(null);
   const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +46,7 @@ function NewQuest() {
         description: description || null,
         category,
         difficulty,
+        thumbnailUrl,
         xpReward,
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
         frequency,
@@ -68,6 +72,53 @@ function NewQuest() {
       <h1 className="text-3xl">Create a Quest</h1>
 
       <form onSubmit={submit} className="space-y-5 rounded-3xl bg-card border-2 border-border p-6">
+        <label className="block">
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                const dataUrl = await fileToDataUrl(file);
+                setThumbnailUrl(dataUrl);
+                setThumbnailFileName(shortenFileName(file.name));
+                setError(null);
+              } catch (err) {
+                setError((err as Error).message);
+              }
+            }}
+          />
+          <div
+            className={cn(
+              "aspect-square rounded-3xl border-2 border-dashed border-border cursor-pointer grid place-items-center text-7xl overflow-hidden",
+              "bg-gradient-to-br from-primary-light to-info/30",
+            )}
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              const input = (e.currentTarget.previousElementSibling as HTMLInputElement | null);
+              input?.click();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                const input = (e.currentTarget.previousElementSibling as HTMLInputElement | null);
+                input?.click();
+              }
+            }}
+          >
+            {thumbnailUrl ? (
+              <img src={thumbnailUrl} alt="Quest thumbnail preview" className="size-full object-cover" />
+            ) : (
+              "🎯"
+            )}
+          </div>
+          <div className="mt-2 text-xs font-bold text-muted-foreground">
+            {thumbnailFileName ?? "Tap to upload quest thumbnail"}
+          </div>
+        </label>
         <Field label="Title">
           <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} placeholder="Read for 20 minutes" />
         </Field>
@@ -164,6 +215,39 @@ function NewQuest() {
       </form>
     </div>
   );
+}
+
+async function fileToDataUrl(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Please upload an image file.");
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    throw new Error("Image must be 2MB or smaller.");
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Failed to read image."));
+        return;
+      }
+      resolve(result);
+    };
+    reader.onerror = () => reject(new Error("Failed to read image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function shortenFileName(name: string): string {
+  if (name.length <= 20) {
+    return name;
+  }
+  const lastDot = name.lastIndexOf(".");
+  const hasExt = lastDot > 0 && lastDot < name.length - 1;
+  const ext = hasExt ? name.slice(lastDot) : "";
+  const base = hasExt ? name.slice(0, lastDot) : name;
+  return `${base.slice(0, 3)}...${base.slice(-4)}${ext}`;
 }
 
 const inputCls = "w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary";

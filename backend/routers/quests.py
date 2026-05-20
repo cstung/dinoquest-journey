@@ -18,6 +18,7 @@ from backend.schemas.quest import (
     QuestFrequency,
     QuestItemOut,
     QuestPageOut,
+    QuestResolveIn,
     QuestUpdate,
 )
 from backend.services.quest_scheduler import compute_cycle_due_at, compute_next_occurrence
@@ -63,6 +64,7 @@ async def _load_assigned_members(quest_id: int, db: AsyncSession) -> list[QuestA
             username=user.username,
             avatar_color=avatar_color,
             status=assignment.status,
+            completion_requested_at=assignment.completion_requested_at,
             completed_at=assignment.completed_at,
             cycle_index=assignment.cycle_index,
             cycle_due_at=assignment.cycle_due_at,
@@ -82,6 +84,8 @@ async def _quest_item(quest: Quest, db: AsyncSession, membership: FamilyMember) 
         statuses = [row.status for row in assigned]
         if statuses and all(status_value == "completed" for status_value in statuses):
             my_status = "completed"
+        elif "pending_approval" in statuses:
+            my_status = "pending_approval"
         elif "missed" in statuses:
             my_status = "missed"
         else:
@@ -93,6 +97,7 @@ async def _quest_item(quest: Quest, db: AsyncSession, membership: FamilyMember) 
         description=quest.description,
         category=quest.category,
         difficulty=quest.difficulty,
+        thumbnail_url=quest.thumbnail_url,
         xp_reward=quest.xp_reward,
         due_date=quest.due_date,
         frequency=QuestFrequency(quest.frequency),
@@ -146,7 +151,7 @@ async def list_quests(
                 ),
             )
         )
-        if status_filter in {"pending", "completed", "missed"}:
+        if status_filter in {"pending", "pending_approval", "completed", "missed"}:
             base = base.where(QuestAssignment.status == status_filter)
 
     rows = await db.execute(base.order_by(Quest.created_at.desc(), Quest.id.desc()).limit(limit + 1))
@@ -157,7 +162,7 @@ async def list_quests(
     items: list[QuestItemOut] = []
     for quest in page_quests:
         item = await _quest_item(quest, db, membership)
-        if membership.role != "child" and status_filter in {"pending", "completed", "missed"}:
+        if membership.role != "child" and status_filter in {"pending", "pending_approval", "completed", "missed"}:
             if item.status != status_filter:
                 continue
         items.append(item)
@@ -194,7 +199,7 @@ async def list_quests(
             )
             .where(Quest.family_id == membership.family_id)
         )
-        if status_filter in {"pending", "completed", "missed"}:
+        if status_filter in {"pending", "pending_approval", "completed", "missed"}:
             total_q = total_q.where(QuestAssignment.status == status_filter)
         if search:
             total_q = total_q.where(func.lower(Quest.title).like(term))
@@ -224,6 +229,7 @@ async def create_quest(
         description=body.description,
         category=body.category,
         difficulty=body.difficulty,
+        thumbnail_url=body.thumbnail_url,
         xp_reward=body.xp_reward,
         due_date=body.due_date,
         frequency=frequency_value,
@@ -341,6 +347,8 @@ async def update_quest(
         quest.category = body.category
     if body.difficulty is not None:
         quest.difficulty = body.difficulty
+    if "thumbnail_url" in body.model_fields_set:
+        quest.thumbnail_url = body.thumbnail_url
     if body.xp_reward is not None:
         quest.xp_reward = body.xp_reward
     if "due_date" in body.model_fields_set:
@@ -426,8 +434,12 @@ async def _complete_assignment(
 ) -> QuestCompleteOut:
     if assignment.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your assignment.")
+    if membership.role != "child":
+        raise HTTPException(status_code=403, detail="Only children can request quest completion.")
     if assignment.status == "completed":
         raise HTTPException(status_code=400, detail="Quest already completed for this cycle.")
+    if assignment.status == "pending_approval":
+        raise HTTPException(status_code=400, detail="Quest completion is already pending approval.")
     if assignment.status == "missed":
         raise HTTPException(status_code=400, detail="Deadline has passed for this cycle.")
 
@@ -435,32 +447,17 @@ async def _complete_assignment(
     if assignment.cycle_due_at and now_utc > assignment.cycle_due_at:
         raise HTTPException(status_code=400, detail="Deadline has passed for this cycle. Your streak will be broken.")
 
-    assignment.status = "completed"
-    assignment.completed_at = now_utc
-    assignment.xp_awarded = quest.xp_reward
-
-    await update_streak(
-        user_id=current_user.id,
-        family_id=membership.family_id,
-        completed_on_time=True,
-        db=db,
-    )
-
-    level_row = await award_xp(
-        family_id=membership.family_id,
-        user_id=current_user.id,
-        delta=quest.xp_reward,
-        reason=f"quest:{quest.id}:cycle:{assignment.cycle_index}",
-        source_id=assignment.id,
-        db=db,
-    )
+    assignment.status = "pending_approval"
+    assignment.completion_requested_at = now_utc
+    assignment.completed_at = None
+    assignment.xp_awarded = 0
 
     db.add(
         ActivityLog(
             family_id=membership.family_id,
             user_id=current_user.id,
-            event_type="quest_completed",
-            payload={"quest_id": quest.id, "xp_awarded": quest.xp_reward, "cycle_index": assignment.cycle_index},
+            event_type="quest_completion_requested",
+            payload={"quest_id": quest.id, "cycle_index": assignment.cycle_index},
             is_audit=False,
         )
     )
@@ -468,25 +465,20 @@ async def _complete_assignment(
     await db.refresh(assignment)
     await emit_family_event(
         membership.family_id,
-        "xp_earned",
-        {"userId": current_user.id, "delta": quest.xp_reward, "reason": "quest_complete"},
-    )
-    await emit_family_event(
-        membership.family_id,
-        "leaderboard_update",
-        {"userId": current_user.id},
-    )
-    await emit_family_event(
-        membership.family_id,
         "quest_updated",
-        {"action": "completed", "questId": quest.id},
+        {"action": "completion_requested", "questId": quest.id, "assignmentId": assignment.id},
+    )
+    await emit_family_event(
+        membership.family_id,
+        "quest_completion_requested",
+        {"questId": quest.id, "assignmentId": assignment.id, "userId": current_user.id},
     )
     return QuestCompleteOut(
         quest_id=quest.id,
         assignment_id=assignment.id,
         xp_awarded=assignment.xp_awarded,
-        total_xp=level_row.total_xp,
-        level=level_row.level,
+        total_xp=0,
+        level=0,
         status=assignment.status,
     )
 
@@ -539,6 +531,110 @@ async def complete_quest(
 
     assignment, quest = result
     return await _complete_assignment(assignment, quest, membership, current_user, db)
+
+
+@router.post("/{family_id}/quest-assignments/{assignment_id}/resolve", response_model=QuestCompleteOut)
+async def resolve_quest_assignment(
+    assignment_id: int,
+    body: QuestResolveIn,
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> QuestCompleteOut:
+    row = await db.execute(
+        select(QuestAssignment, Quest)
+        .join(Quest, Quest.id == QuestAssignment.quest_id)
+        .where(
+            QuestAssignment.id == assignment_id,
+            QuestAssignment.family_id == parent_member.family_id,
+            Quest.family_id == parent_member.family_id,
+        )
+    )
+    result = row.one_or_none()
+    if not result:
+        raise HTTPException(status_code=404, detail="Quest assignment not found")
+
+    assignment, quest = result
+    if assignment.status != "pending_approval":
+        raise HTTPException(status_code=400, detail="Quest assignment is not pending approval")
+
+    now_utc = datetime.now(timezone.utc)
+    assignment.reviewed_at = now_utc
+    assignment.reviewed_by = parent_member.user_id
+
+    if body.decision == "approve":
+        assignment.status = "completed"
+        assignment.completed_at = now_utc
+        assignment.xp_awarded = quest.xp_reward
+        completion_base = assignment.completion_requested_at or now_utc
+        await update_streak(
+            user_id=assignment.user_id,
+            family_id=assignment.family_id,
+            completed_on_time=True,
+            db=db,
+            completed_at=completion_base,
+        )
+        level_row = await award_xp(
+            family_id=assignment.family_id,
+            user_id=assignment.user_id,
+            delta=quest.xp_reward,
+            reason=f"quest:{quest.id}:cycle:{assignment.cycle_index}",
+            source_id=assignment.id,
+            db=db,
+        )
+        total_xp = level_row.total_xp
+        level = level_row.level
+        event_action = "completion_approved"
+    else:
+        assignment.status = "pending"
+        assignment.completed_at = None
+        assignment.completion_requested_at = None
+        assignment.xp_awarded = 0
+        total_xp = 0
+        level = 0
+        event_action = "completion_rejected"
+
+    db.add(
+        ActivityLog(
+            family_id=assignment.family_id,
+            user_id=parent_member.user_id,
+            event_type="quest_completion_resolved",
+            payload={
+                "quest_id": quest.id,
+                "assignment_id": assignment.id,
+                "decision": body.decision,
+                "user_id": assignment.user_id,
+            },
+            is_audit=True,
+        )
+    )
+    await db.commit()
+    await db.refresh(assignment)
+
+    await emit_family_event(
+        assignment.family_id,
+        "quest_updated",
+        {"action": event_action, "questId": quest.id, "assignmentId": assignment.id, "userId": assignment.user_id},
+    )
+    if body.decision == "approve":
+        await emit_family_event(
+            assignment.family_id,
+            "xp_earned",
+            {"userId": assignment.user_id, "delta": quest.xp_reward, "reason": "quest_complete"},
+        )
+        await emit_family_event(
+            assignment.family_id,
+            "leaderboard_update",
+            {"userId": assignment.user_id},
+        )
+
+    return QuestCompleteOut(
+        quest_id=quest.id,
+        assignment_id=assignment.id,
+        xp_awarded=assignment.xp_awarded,
+        total_xp=total_xp,
+        level=level,
+        status=assignment.status,
+    )
 
 
 @router.get("/{family_id}/quests/{quest_id}/history", response_model=list[QuestAssignmentHistoryOut])

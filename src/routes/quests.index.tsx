@@ -1,9 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { Plus, Search, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useQuests, type QuestItem } from "@/hooks/use-quests";
+import {
+  useCompleteQuest,
+  useQuests,
+  useResolveQuestCompletion,
+  type AssignedMember,
+  type QuestItem,
+} from "@/hooks/use-quests";
 
 export const Route = createFileRoute("/quests/")({ component: QuestsPage });
 
@@ -14,23 +20,66 @@ const CATEGORY_COLORS: Record<string, string> = {
   Epic: "bg-warning/15 text-warning",
 };
 
+type ParentApprovalItem = {
+  questId: number;
+  questTitle: string;
+  assignmentId: number;
+  userId: number;
+  username: string;
+  cycleIndex: number;
+};
+
 function QuestsPage() {
   const role = useFamilyStore((s) => s.activeFamilyRole);
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const familyId = useFamilyStore((s) => s.activeFamilyId);
   const isParent = role === "parent" || role === "superadmin";
-  const [tab, setTab] = useState<"all" | "pending" | "completed" | "missed">("all");
+  const [tab, setTab] = useState<"all" | "pending" | "pending_approval" | "completed" | "missed">("all");
   const [search, setSearch] = useState("");
+  const [queueMessage, setQueueMessage] = useState<string | null>(null);
 
+  const resolveCompletion = useResolveQuestCompletion(familyId);
   const { data, isLoading, error } = useQuests(familyId, { search, status: tab });
+  const pendingApprovalQuery = useQuests(familyId, { status: "pending_approval" });
   const quests = data?.items ?? [];
 
+  const pendingApprovals = useMemo<ParentApprovalItem[]>(() => {
+    if (!isParent) return [];
+    const items: ParentApprovalItem[] = [];
+    const queueSource = pendingApprovalQuery.data?.items ?? [];
+    for (const quest of queueSource) {
+      for (const member of quest.assignedMembers) {
+        if (member.status === "pending_approval") {
+          items.push({
+            questId: quest.id,
+            questTitle: quest.title,
+            assignmentId: member.assignmentId,
+            userId: member.userId,
+            username: member.username,
+            cycleIndex: member.cycleIndex,
+          });
+        }
+      }
+    }
+    return items;
+  }, [isParent, pendingApprovalQuery.data?.items]);
+
+  const handleResolve = async (item: ParentApprovalItem, decision: "approve" | "reject") => {
+    setQueueMessage(null);
+    try {
+      const result = await resolveCompletion.mutateAsync({ assignmentId: item.assignmentId, decision });
+      if (decision === "approve") {
+        setQueueMessage(`Approved '${item.questTitle}' (+${result.xpAwarded} XP).`);
+      } else {
+        setQueueMessage(`Rejected '${item.questTitle}'.`);
+      }
+    } catch (err) {
+      setQueueMessage((err as Error).message);
+    }
+  };
+
   if (!familyId) {
-    return (
-      <div className="py-10 text-sm text-muted-foreground">
-        Select a family first to view quests.
-      </div>
-    );
+    return <div className="py-10 text-sm text-muted-foreground">Select a family first to view quests.</div>;
   }
 
   if (isLoading) {
@@ -67,8 +116,8 @@ function QuestsPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b-2 border-border">
-        {(["all", "pending", "completed", "missed"] as const).map((t) => (
+      <div className="flex gap-2 border-b-2 border-border flex-wrap">
+        {(["all", "pending", "pending_approval", "completed", "missed"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -82,15 +131,54 @@ function QuestsPage() {
         ))}
       </div>
 
+      {isParent && (
+        <div className="rounded-2xl bg-card border-2 border-border p-4 space-y-3">
+          <h3 className="font-display font-extrabold">Pending Approvals</h3>
+          {pendingApprovals.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No pending approvals.</p>
+          ) : (
+            <div className="space-y-2">
+              {pendingApprovals.map((item) => (
+                <div key={item.assignmentId} className="rounded-xl border-2 border-border p-3 flex items-center gap-3 flex-wrap">
+                  <div className="flex-1 min-w-[220px]">
+                    <p className="font-bold text-sm">
+                      {item.username} requested completion for {item.questTitle}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Cycle {item.cycleIndex}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleResolve(item, "approve")}
+                      disabled={resolveCompletion.isPending}
+                      className="rounded-lg bg-primary text-primary-foreground text-xs font-extrabold uppercase px-3 py-2"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleResolve(item, "reject")}
+                      disabled={resolveCompletion.isPending}
+                      className="rounded-lg bg-secondary text-xs font-extrabold uppercase px-3 py-2"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {queueMessage && <p className="text-sm text-muted-foreground">{queueMessage}</p>}
+        </div>
+      )}
+
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {quests.map((q) => (
-          <QuestCard key={q.id} quest={q} currentUserId={currentUserId ?? null} />
+          <QuestCard key={q.id} quest={q} currentUserId={currentUserId} isParent={isParent} familyId={familyId} />
         ))}
       </div>
 
       {quests.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
-          <div className="text-5xl mb-3">🎯</div>
+          <div className="text-5xl mb-3">??</div>
           <p className="font-bold">No quests here yet.</p>
         </div>
       )}
@@ -98,60 +186,108 @@ function QuestsPage() {
   );
 }
 
-function QuestCard({ quest: q, currentUserId }: { quest: QuestItem; currentUserId: number | null }) {
-  const myAssignment = q.assignedMembers.find((m) => m.userId === currentUserId) ?? q.assignedMembers[0];
-  const dueAt = myAssignment?.cycleDueAt ?? q.dueDate;
+function QuestCard({
+  quest,
+  currentUserId,
+  isParent,
+  familyId,
+}: {
+  quest: QuestItem;
+  currentUserId: number | null;
+  isParent: boolean;
+  familyId: number;
+}) {
+  const myAssignment = quest.assignedMembers.find((m) => m.userId === currentUserId) ?? null;
+  const completeMutation = useCompleteQuest(familyId, myAssignment?.assignmentId ?? null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const onMarkComplete = async () => {
+    setMessage(null);
+    try {
+      await completeMutation.mutateAsync();
+      setMessage("Completion request sent. Waiting for parent approval.");
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
+  };
+
+  const statusBadge = myAssignment?.status ?? quest.status;
+
   return (
-    <Link
-      to="/quests/$questId"
-      params={{ questId: String(q.id) }}
-      className="group rounded-2xl bg-card border-2 border-border p-5 card-pop hover:border-primary/40 transition-all hover:-translate-y-0.5"
-    >
-      <div className="flex items-center justify-between mb-3">
+    <div className="rounded-2xl bg-card border-2 border-border p-5 card-pop flex flex-col">
+      <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-7xl mb-3 overflow-hidden">
+        {quest.thumbnailUrl ? (
+          <img src={quest.thumbnailUrl} alt={quest.title} className="size-full object-cover" />
+        ) : (
+          "??"
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-2 mb-2">
         <span
           className={cn(
             "text-xs font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-md",
-            CATEGORY_COLORS[q.category] ?? "bg-secondary text-secondary-foreground",
+            CATEGORY_COLORS[quest.category] ?? "bg-secondary text-secondary-foreground",
           )}
         >
-          {q.category}
+          {quest.category}
         </span>
-        <div className="flex items-center gap-1.5">
-          {q.frequency !== "once" && (
-            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-secondary text-secondary-foreground">
-              {q.frequency}
-            </span>
-          )}
-          {q.status === "completed" && <CheckCircle2 className="size-4 text-primary" />}
-          {q.status === "missed" && (
-            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-destructive text-destructive-foreground">
-              Missed
-            </span>
-          )}
-        </div>
+        {quest.frequency !== "once" && (
+          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-secondary text-secondary-foreground">
+            {quest.frequency}
+          </span>
+        )}
       </div>
-      <h3 className="font-display font-extrabold text-lg leading-tight mb-2">{q.title}</h3>
-      <p className="text-sm text-muted-foreground line-clamp-2">{q.description}</p>
-      {dueAt && (
-        <p className="text-xs text-muted-foreground mt-2">
-          Due {new Date(dueAt).toLocaleString()}
-        </p>
-      )}
+
+      <Link to="/quests/$questId" params={{ questId: String(quest.id) }} className="block">
+        <h3 className="font-display font-extrabold text-lg leading-tight mb-1 hover:underline">{quest.title}</h3>
+      </Link>
+
+      <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{quest.description || "No description."}</p>
+
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
-        <div className="flex -space-x-2">
-          {q.assignedMembers.slice(0, 4).map((m) => (
-            <span
-              key={m.userId}
-              className="size-7 rounded-xl border-2 border-card grid place-items-center text-[10px] font-extrabold text-white"
-              style={{ backgroundColor: m.avatarColor ?? "#9ca3af" }}
-              title={m.username}
-            >
-              {m.username.slice(0, 1).toUpperCase()}
-            </span>
-          ))}
-        </div>
-        <span className="text-sm font-extrabold text-warning">+{q.xpReward} XP</span>
+        <span className="text-sm font-extrabold text-warning">+{quest.xpReward} XP</span>
+        {isParent ? (
+          <span className={cn(
+            "text-[10px] font-extrabold uppercase px-2 py-1 rounded",
+            statusBadge === "completed" && "bg-success/15 text-success-foreground",
+            statusBadge === "pending_approval" && "bg-warning/20 text-warning-foreground",
+            statusBadge === "missed" && "bg-destructive/15 text-destructive",
+            statusBadge === "pending" && "bg-secondary text-secondary-foreground",
+          )}>
+            {statusBadge === "pending_approval" ? "Pending Approval" : statusBadge}
+          </span>
+        ) : (
+          <button
+            onClick={onMarkComplete}
+            disabled={
+              !myAssignment ||
+              completeMutation.isPending ||
+              myAssignment.status !== "pending"
+            }
+            className={cn(
+              "rounded-xl font-display font-extrabold uppercase text-xs px-4 py-2.5",
+              myAssignment?.status === "pending"
+                ? "bg-primary text-primary-foreground btn-pop"
+                : "bg-muted text-muted-foreground cursor-not-allowed",
+            )}
+          >
+            {completeMutation.isPending
+              ? "Requesting..."
+              : myAssignment?.status === "pending_approval"
+                ? "Pending Approval"
+                : myAssignment?.status === "completed"
+                  ? "Completed"
+                  : myAssignment?.status === "missed"
+                    ? "Missed"
+                    : "Mark Complete"}
+          </button>
+        )}
       </div>
-    </Link>
+      {!isParent && message && <p className="text-xs text-muted-foreground mt-2">{message}</p>}
+      {!isParent && myAssignment?.status === "pending_approval" && !message && (
+        <p className="text-xs text-muted-foreground mt-2">Waiting for parent confirmation.</p>
+      )}
+    </div>
   );
 }

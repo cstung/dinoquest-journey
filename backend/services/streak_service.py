@@ -16,6 +16,7 @@ async def update_streak(
     family_id: int,
     completed_on_time: bool,
     db: AsyncSession,
+    completed_at: datetime | None = None,
 ) -> None:
     row = (
         await db.execute(
@@ -28,7 +29,10 @@ async def update_streak(
     if not row:
         return
 
-    today_vn = datetime.now(TZ).date()
+    base_dt = completed_at if completed_at is not None else datetime.now(TZ)
+    if base_dt.tzinfo is None:
+        base_dt = base_dt.replace(tzinfo=TZ)
+    today_vn = base_dt.astimezone(TZ).date()
 
     if not completed_on_time:
         row.current_streak = 0

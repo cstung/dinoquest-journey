@@ -14,6 +14,7 @@ from backend.schemas.quest import (
     QuestFrequency,
     QuestItemOut,
     QuestPageOut,
+    QuestResolveIn,
     QuestUpdate,
 )
 from backend.schemas.reward import RewardClaimOut, RewardClaimResolveIn, RewardCreate, RewardOut, RewardUpdate
@@ -64,6 +65,7 @@ __all__ = [
     "QuestFrequency",
     "QuestItemOut",
     "QuestPageOut",
+    "QuestResolveIn",
     "QuestUpdate",
     "RewardClaimOut",
     "RewardClaimResolveIn",
