@@ -219,8 +219,12 @@ function QuestDetail() {
             </>
           )}
 
-          <div className="aspect-video rounded-3xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-8xl">
-            🎯
+          <div className="aspect-square rounded-3xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-8xl overflow-hidden">
+            {quest.thumbnailUrl ? (
+              <img src={quest.thumbnailUrl} alt={quest.title} className="size-full object-cover" />
+            ) : (
+              "🎯"
+            )}
           </div>
         </div>
 
@@ -337,3 +341,5 @@ function QuestDetail() {
     </div>
   );
 }
+
+

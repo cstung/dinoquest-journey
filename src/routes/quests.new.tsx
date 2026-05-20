@@ -72,8 +72,9 @@ function NewQuest() {
       <h1 className="text-3xl">Create a Quest</h1>
 
       <form onSubmit={submit} className="space-y-5 rounded-3xl bg-card border-2 border-border p-6">
-        <label className="block">
+        <div className="block">
           <input
+            id="quest-thumbnail-input"
             type="file"
             accept="image/*"
             className="hidden"
@@ -90,35 +91,23 @@ function NewQuest() {
               }
             }}
           />
-          <div
+          <label
+            htmlFor="quest-thumbnail-input"
             className={cn(
               "aspect-square rounded-3xl border-2 border-dashed border-border cursor-pointer grid place-items-center text-7xl overflow-hidden",
               "bg-gradient-to-br from-primary-light to-info/30",
             )}
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              const input = (e.currentTarget.previousElementSibling as HTMLInputElement | null);
-              input?.click();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                const input = (e.currentTarget.previousElementSibling as HTMLInputElement | null);
-                input?.click();
-              }
-            }}
           >
             {thumbnailUrl ? (
               <img src={thumbnailUrl} alt="Quest thumbnail preview" className="size-full object-cover" />
             ) : (
               "🎯"
             )}
-          </div>
+          </label>
           <div className="mt-2 text-xs font-bold text-muted-foreground">
             {thumbnailFileName ?? "Tap to upload quest thumbnail"}
           </div>
-        </label>
+        </div>
         <Field label="Title">
           <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} placeholder="Read for 20 minutes" />
         </Field>
