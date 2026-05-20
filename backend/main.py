@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from backend.config import get_settings
 from backend.database import engine
+from backend.services.quest_scheduler import run_quest_scheduler
 from backend.routers import (
     activity_log,
     auth,
@@ -26,6 +29,7 @@ from backend.routers import (
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name)
+    scheduler = AsyncIOScheduler(timezone="Asia/Ho_Chi_Minh")
 
     app.add_middleware(
         CORSMiddleware,
@@ -55,6 +59,20 @@ def create_app() -> FastAPI:
             "environment": settings.environment,
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
+
+    @app.on_event("startup")
+    async def start_scheduler() -> None:
+        scheduler.add_job(
+            run_quest_scheduler,
+            CronTrigger(hour=0, minute=0, second=0),
+            id="quest_scheduler",
+            replace_existing=True,
+        )
+        scheduler.start()
+
+    @app.on_event("shutdown")
+    async def stop_scheduler() -> None:
+        scheduler.shutdown(wait=False)
 
     return app
 

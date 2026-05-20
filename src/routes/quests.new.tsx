@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useFamilyStore } from "@/store";
-import { useCreateQuest } from "@/hooks/use-quests";
+import { type QuestFrequency, useCreateQuest } from "@/hooks/use-quests";
 import { useFamilyMembers } from "@/hooks/use-families";
 
 export const Route = createFileRoute("/quests/new")({ component: NewQuest });
@@ -19,7 +19,8 @@ function NewQuest() {
   const [difficulty, setDifficulty] = useState("Easy");
   const [xpReward, setXpReward] = useState(10);
   const [dueDate, setDueDate] = useState("");
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [frequency, setFrequency] = useState<QuestFrequency>("once");
+  const [recurrenceEndAt, setRecurrenceEndAt] = useState("");
   const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +28,7 @@ function NewQuest() {
     return <div className="py-10 text-sm text-muted-foreground">Select a family first.</div>;
   }
 
-  if (role !== "parent") {
+  if (role !== "parent" && role !== "superadmin") {
     return <div className="py-10 text-sm text-destructive">Only parents can create quests.</div>;
   }
 
@@ -44,7 +45,9 @@ function NewQuest() {
         difficulty,
         xpReward,
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
-        isRecurring,
+        frequency,
+        recurrenceEndAt:
+          frequency !== "once" && recurrenceEndAt ? new Date(recurrenceEndAt).toISOString() : null,
         assignedUserIds: assignedUserIds.length ? assignedUserIds : undefined,
       });
       nav({ to: "/quests/$questId", params: { questId: String(created.id) } });
@@ -103,9 +106,27 @@ function NewQuest() {
               className={inputCls}
             />
           </Field>
-          <Field label="Due Date">
+          <Field label={frequency === "once" ? "Due Date" : "First Due Date"}>
             <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
           </Field>
+          <Field label="Frequency">
+            <select value={frequency} onChange={(e) => setFrequency(e.target.value as QuestFrequency)} className={inputCls}>
+              <option value="once">One time</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </Field>
+          {frequency !== "once" && (
+            <Field label="Recurrence End Date (optional)">
+              <input
+                type="date"
+                value={recurrenceEndAt}
+                onChange={(e) => setRecurrenceEndAt(e.target.value)}
+                className={inputCls}
+              />
+            </Field>
+          )}
         </div>
 
         <Field label="Assign To Children (optional)">
@@ -127,15 +148,6 @@ function NewQuest() {
           </div>
         </Field>
 
-        <label className="flex items-center gap-2 font-bold text-sm">
-          <input
-            type="checkbox"
-            checked={isRecurring}
-            onChange={(e) => setIsRecurring(e.target.checked)}
-            className="size-5 rounded-md accent-primary"
-          />
-          Make this a recurring quest
-        </label>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex gap-3 pt-2">
           <button
@@ -164,4 +176,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </label>
   );
 }
-

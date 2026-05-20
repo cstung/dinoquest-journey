@@ -10,3 +10,4 @@ passlib[argon2]==1.7.4
 python-multipart==0.0.12
 python-dotenv==1.0.1
 qrcode[pil]==7.4.2
+apscheduler>=3.10.0

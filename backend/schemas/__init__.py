@@ -8,8 +8,10 @@ from backend.schemas.member import MemberOut, MemberRoleUpdate
 from backend.schemas.pet import PetCreate, PetFeedOut, PetOut, PetPageOut, PetUpdate
 from backend.schemas.quest import (
     QuestAssignedMemberOut,
+    QuestAssignmentHistoryOut,
     QuestCompleteOut,
     QuestCreate,
+    QuestFrequency,
     QuestItemOut,
     QuestPageOut,
     QuestUpdate,
@@ -56,8 +58,10 @@ __all__ = [
     "PetPageOut",
     "PetUpdate",
     "QuestAssignedMemberOut",
+    "QuestAssignmentHistoryOut",
     "QuestCompleteOut",
     "QuestCreate",
+    "QuestFrequency",
     "QuestItemOut",
     "QuestPageOut",
     "QuestUpdate",

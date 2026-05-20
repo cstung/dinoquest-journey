@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.database import Base
@@ -31,6 +31,9 @@ class UserFamilyLevel(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     total_xp: Mapped[int] = mapped_column(nullable=False, default=0)
     level: Mapped[int] = mapped_column(nullable=False, default=1)
+    current_streak: Mapped[int] = mapped_column(nullable=False, default=0)
+    best_streak: Mapped[int] = mapped_column(nullable=False, default=0)
+    last_completed_date: Mapped[date | None] = mapped_column(Date)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -63,4 +66,3 @@ class Achievement(Base):
     code: Mapped[str] = mapped_column(String(80), nullable=False)
     tier: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-

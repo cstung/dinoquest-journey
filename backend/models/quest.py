@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.database import Base
@@ -20,7 +20,9 @@ class Quest(Base):
     difficulty: Mapped[str] = mapped_column(String(20), nullable=False, default="Easy")
     xp_reward: Mapped[int] = mapped_column(nullable=False, default=10)
     due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    is_recurring: Mapped[bool] = mapped_column(default=False, nullable=False)
+    frequency: Mapped[str] = mapped_column(Text, nullable=False, default="once")
+    next_occurrence_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    recurrence_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -32,7 +34,7 @@ class Quest(Base):
 class QuestAssignment(Base):
     __tablename__ = "quest_assignments"
     __table_args__ = (
-        UniqueConstraint("quest_id", "user_id", name="uq_quest_assignment"),
+        UniqueConstraint("quest_id", "user_id", "cycle_index", name="uq_quest_assignment_cycle"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -42,5 +44,7 @@ class QuestAssignment(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     xp_awarded: Mapped[int] = mapped_column(nullable=False, default=0)
+    cycle_index: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    cycle_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cycle_start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-

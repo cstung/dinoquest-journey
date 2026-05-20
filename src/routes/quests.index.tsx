@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { useFamilyStore } from "@/store";
-import { Plus, Search, Repeat, CheckCircle2 } from "lucide-react";
+import { useAuthStore, useFamilyStore } from "@/store";
+import { Plus, Search, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuests, type QuestItem } from "@/hooks/use-quests";
 
@@ -16,9 +16,10 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 function QuestsPage() {
   const role = useFamilyStore((s) => s.activeFamilyRole);
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const familyId = useFamilyStore((s) => s.activeFamilyId);
-  const isParent = role === "parent";
-  const [tab, setTab] = useState<"all" | "pending" | "completed">("all");
+  const isParent = role === "parent" || role === "superadmin";
+  const [tab, setTab] = useState<"all" | "pending" | "completed" | "missed">("all");
   const [search, setSearch] = useState("");
 
   const { data, isLoading, error } = useQuests(familyId, { search, status: tab });
@@ -67,7 +68,7 @@ function QuestsPage() {
       </div>
 
       <div className="flex gap-2 border-b-2 border-border">
-        {(["all", "pending", "completed"] as const).map((t) => (
+        {(["all", "pending", "completed", "missed"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -83,7 +84,7 @@ function QuestsPage() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {quests.map((q) => (
-          <QuestCard key={q.id} quest={q} />
+          <QuestCard key={q.id} quest={q} currentUserId={currentUserId ?? null} />
         ))}
       </div>
 
@@ -97,7 +98,9 @@ function QuestsPage() {
   );
 }
 
-function QuestCard({ quest: q }: { quest: QuestItem }) {
+function QuestCard({ quest: q, currentUserId }: { quest: QuestItem; currentUserId: number | null }) {
+  const myAssignment = q.assignedMembers.find((m) => m.userId === currentUserId) ?? q.assignedMembers[0];
+  const dueAt = myAssignment?.cycleDueAt ?? q.dueDate;
   return (
     <Link
       to="/quests/$questId"
@@ -113,13 +116,27 @@ function QuestCard({ quest: q }: { quest: QuestItem }) {
         >
           {q.category}
         </span>
-        <div className="flex items-center gap-1">
-          {q.isRecurring && <Repeat className="size-3.5 text-muted-foreground" />}
+        <div className="flex items-center gap-1.5">
+          {q.frequency !== "once" && (
+            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-secondary text-secondary-foreground">
+              {q.frequency}
+            </span>
+          )}
           {q.status === "completed" && <CheckCircle2 className="size-4 text-primary" />}
+          {q.status === "missed" && (
+            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-destructive text-destructive-foreground">
+              Missed
+            </span>
+          )}
         </div>
       </div>
       <h3 className="font-display font-extrabold text-lg leading-tight mb-2">{q.title}</h3>
       <p className="text-sm text-muted-foreground line-clamp-2">{q.description}</p>
+      {dueAt && (
+        <p className="text-xs text-muted-foreground mt-2">
+          Due {new Date(dueAt).toLocaleString()}
+        </p>
+      )}
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
         <div className="flex -space-x-2">
           {q.assignedMembers.slice(0, 4).map((m) => (
@@ -138,4 +155,3 @@ function QuestCard({ quest: q }: { quest: QuestItem }) {
     </Link>
   );
 }
-

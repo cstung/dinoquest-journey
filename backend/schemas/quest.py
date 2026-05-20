@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 
 from pydantic import Field, field_validator
 
 from backend.base_schema import APIModel
+
+
+class QuestFrequency(str, Enum):
+    once = "once"
+    daily = "daily"
+    weekly = "weekly"
+    monthly = "monthly"
 
 
 class QuestCreate(APIModel):
@@ -14,8 +22,9 @@ class QuestCreate(APIModel):
     difficulty: str = "Easy"
     xp_reward: int = Field(default=10, ge=1, le=10000)
     due_date: datetime | None = None
-    is_recurring: bool = False
-    assigned_user_ids: list[int] | None = None
+    recurrence_end_at: datetime | None = None
+    frequency: QuestFrequency = QuestFrequency.once
+    assigned_user_ids: list[int] = Field(default_factory=list)
 
     @field_validator("title")
     @classmethod
@@ -32,7 +41,8 @@ class QuestUpdate(APIModel):
     difficulty: str | None = None
     xp_reward: int | None = Field(default=None, ge=1, le=10000)
     due_date: datetime | None = None
-    is_recurring: bool | None = None
+    recurrence_end_at: datetime | None = None
+    frequency: QuestFrequency | None = None
 
 
 class QuestCompleteOut(APIModel):
@@ -45,11 +55,15 @@ class QuestCompleteOut(APIModel):
 
 
 class QuestAssignedMemberOut(APIModel):
+    assignment_id: int
     user_id: int
     username: str
     avatar_color: str | None
     status: str
     completed_at: datetime | None
+    cycle_index: int
+    cycle_due_at: datetime | None
+    cycle_start_at: datetime
 
 
 class QuestItemOut(APIModel):
@@ -60,7 +74,9 @@ class QuestItemOut(APIModel):
     difficulty: str
     xp_reward: int
     due_date: datetime | None
-    is_recurring: bool
+    frequency: QuestFrequency
+    next_occurrence_at: datetime | None
+    recurrence_end_at: datetime | None
     status: str
     assigned_members: list[QuestAssignedMemberOut]
     created_at: datetime
@@ -71,3 +87,14 @@ class QuestPageOut(APIModel):
     next_cursor: str | None
     total: int
 
+
+class QuestAssignmentHistoryOut(APIModel):
+    assignment_id: int
+    quest_id: int
+    user_id: int
+    username: str
+    status: str
+    completed_at: datetime | None
+    cycle_due_at: datetime | None
+    cycle_start_at: datetime
+    cycle_index: int

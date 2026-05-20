@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
-import { useFamilyStore } from "@/store";
+import { useAuthStore, useFamilyStore } from "@/store";
 import {
+  type QuestFrequency,
   useCompleteQuest,
   useDeleteQuest,
   useQuestDetail,
@@ -16,9 +17,9 @@ function QuestDetail() {
   const { questId } = useParams({ from: "/quests/$questId" });
   const familyId = useFamilyStore((s) => s.activeFamilyId);
   const role = useFamilyStore((s) => s.activeFamilyRole);
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const questIdNum = Number(questId);
   const query = useQuestDetail(familyId, questIdNum);
-  const completeMutation = useCompleteQuest(familyId, questIdNum);
   const updateMutation = useUpdateQuest(familyId, questIdNum);
   const deleteMutation = useDeleteQuest(familyId, questIdNum);
   const [completeMessage, setCompleteMessage] = useState<string | null>(null);
@@ -29,8 +30,13 @@ function QuestDetail() {
   const [difficulty, setDifficulty] = useState("Easy");
   const [xpReward, setXpReward] = useState(10);
   const [dueDate, setDueDate] = useState("");
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [frequency, setFrequency] = useState<QuestFrequency>("once");
+  const [recurrenceEndAt, setRecurrenceEndAt] = useState("");
   const quest = query.data;
+  const myAssignment =
+    quest?.assignedMembers.find((m) => m.userId === currentUserId) ??
+    null;
+  const completeMutation = useCompleteQuest(familyId, myAssignment?.assignmentId ?? null);
 
   useEffect(() => {
     if (!quest) return;
@@ -40,7 +46,10 @@ function QuestDetail() {
     setDifficulty(quest.difficulty);
     setXpReward(quest.xpReward);
     setDueDate(quest.dueDate ? new Date(quest.dueDate).toISOString().slice(0, 10) : "");
-    setIsRecurring(quest.isRecurring);
+    setFrequency(quest.frequency);
+    setRecurrenceEndAt(
+      quest.recurrenceEndAt ? new Date(quest.recurrenceEndAt).toISOString().slice(0, 10) : "",
+    );
   }, [quest]);
 
   if (!familyId) {
@@ -61,8 +70,8 @@ function QuestDetail() {
       </div>
     );
   }
-  const canComplete = role === "child" && quest.status !== "completed";
-  const canManage = role === "parent";
+  const canComplete = role === "child" && quest.status === "pending";
+  const canManage = role === "parent" || role === "superadmin";
 
   const onComplete = async () => {
     setCompleteMessage(null);
@@ -85,7 +94,9 @@ function QuestDetail() {
         difficulty,
         xpReward,
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
-        isRecurring,
+        frequency,
+        recurrenceEndAt:
+          frequency !== "once" && recurrenceEndAt ? new Date(recurrenceEndAt).toISOString() : null,
       });
       await query.refetch();
       setEditMode(false);
@@ -166,15 +177,25 @@ function QuestDetail() {
                   onChange={(e) => setDueDate(e.target.value)}
                   className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
                 />
+                <select
+                  value={frequency}
+                  onChange={(e) => setFrequency(e.target.value as QuestFrequency)}
+                  className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+                >
+                  <option value="once">One time</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+                {frequency !== "once" && (
+                  <input
+                    type="date"
+                    value={recurrenceEndAt}
+                    onChange={(e) => setRecurrenceEndAt(e.target.value)}
+                    className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+                  />
+                )}
               </div>
-              <label className="flex items-center gap-2 text-sm font-bold">
-                <input
-                  type="checkbox"
-                  checked={isRecurring}
-                  onChange={(e) => setIsRecurring(e.target.checked)}
-                />
-                Recurring
-              </label>
               <div className="flex gap-2">
                 <button
                   onClick={onSave}
@@ -214,14 +235,16 @@ function QuestDetail() {
                 <div className="font-display font-extrabold text-xl">+{quest.xpReward} XP</div>
               </div>
             </div>
-            {quest.dueDate && (
+            {(myAssignment?.cycleDueAt || quest.dueDate) && (
               <div className="flex items-center gap-3">
                 <div className="size-10 rounded-xl bg-info/15 grid place-items-center text-info">
                   <Calendar className="size-5" />
                 </div>
                 <div>
                   <div className="text-xs font-bold text-muted-foreground uppercase">Due</div>
-                  <div className="font-bold">{new Date(quest.dueDate).toLocaleDateString()}</div>
+                  <div className="font-bold">
+                    {new Date((myAssignment?.cycleDueAt ?? quest.dueDate) as string).toLocaleDateString()}
+                  </div>
                 </div>
               </div>
             )}
@@ -234,7 +257,7 @@ function QuestDetail() {
                 <div className="font-bold">{quest.difficulty}</div>
               </div>
             </div>
-            {quest.isRecurring && (
+            {quest.frequency !== "once" && (
               <div className="flex items-center gap-3">
                 <div className="size-10 rounded-xl bg-pink/15 grid place-items-center text-pink">
                   <Repeat className="size-5" />
@@ -243,7 +266,7 @@ function QuestDetail() {
                   <div className="text-xs font-bold text-muted-foreground uppercase">
                     Recurrence
                   </div>
-                  <div className="font-bold">Recurring</div>
+                  <div className="font-bold uppercase">{quest.frequency}</div>
                 </div>
               </div>
             )}
@@ -275,14 +298,14 @@ function QuestDetail() {
           {canComplete ? (
             <button
               onClick={onComplete}
-              disabled={completeMutation.isPending}
+              disabled={completeMutation.isPending || !myAssignment}
               className="w-full rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase py-4 btn-pop disabled:opacity-60"
             >
               {completeMutation.isPending ? "Completing..." : "Mark as Complete"}
             </button>
           ) : (
             <div className="w-full rounded-2xl bg-secondary font-display font-extrabold uppercase py-4 text-center">
-              {quest.status === "completed" ? "Completed" : "Parent View"}
+              {quest.status === "completed" ? "Completed" : quest.status === "missed" ? "Missed" : "Parent View"}
             </div>
           )}
           {canManage && !editMode && (

@@ -65,6 +65,8 @@ export function useFamilyRealtime(
           }
           if (
             msg.event === "quest_updated" ||
+            msg.event === "quest_cycle_created" ||
+            msg.event === "quest_missed" ||
             msg.event === "xp_earned"
           ) {
             queryClient.invalidateQueries({ queryKey: ["quests", familyId] });

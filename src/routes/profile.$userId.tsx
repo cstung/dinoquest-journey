@@ -119,6 +119,8 @@ interface ActivityEv {
   id: number;
   event_type:
     | "quest_completed"
+    | "quest_cycle_created"
+    | "quest_missed"
     | "test_completed"
     | "level_up"
     | "achievement_earned"
@@ -231,19 +233,23 @@ function eventText(ev: ActivityEv): { icon: string; text: string; color: string 
   const score = ev.payload.score ?? ev.payload.score_pct ?? 0;
   switch (ev.event_type) {
     case "quest_completed":
-      return { icon: "⚔️", color: "bg-success/15 text-success-foreground", text: `Completed "${questTitle}" (+${ev.payload.xp ?? 0} XP)` };
+      return { icon: "??", color: "bg-success/15 text-success-foreground", text: `Completed "${questTitle}" (+${ev.payload.xp ?? 0} XP)` };
+    case "quest_cycle_created":
+      return { icon: "??", color: "bg-info/15 text-info-foreground", text: `New cycle started for '${ev.payload.questTitle ?? questTitle}'` };
+    case "quest_missed":
+      return { icon: "?", color: "bg-destructive/15 text-destructive", text: `Missed '${ev.payload.questTitle ?? questTitle}' - streak broken` };
     case "test_completed":
-      return { icon: "🎬", color: "bg-info/15 text-info-foreground", text: `Scored ${score}% on "${testTitle}"` };
+      return { icon: "??", color: "bg-info/15 text-info-foreground", text: `Scored ${score}% on "${testTitle}"` };
     case "level_up":
-      return { icon: "🚀", color: "bg-warning/15 text-warning-foreground", text: `Reached Level ${ev.payload.level}!` };
+      return { icon: "??", color: "bg-warning/15 text-warning-foreground", text: `Reached Level ${ev.payload.level}!` };
     case "achievement_earned":
-      return { icon: "🏅", color: "bg-purple/15 text-purple", text: `Earned "${ev.payload.achievement_name}" Medal` };
+      return { icon: "??", color: "bg-purple/15 text-purple", text: `Earned "${ev.payload.achievement_name}" Medal` };
     case "reward_claim_requested":
-      return { icon: "🎁", color: "bg-pink/15 text-pink", text: `Claimed "${ev.payload.reward_title ?? "a reward"}" reward` };
+      return { icon: "??", color: "bg-pink/15 text-pink", text: `Claimed "${ev.payload.reward_title ?? "a reward"}" reward` };
     case "streak_milestone":
-      return { icon: "🔥", color: "bg-warning/15 text-warning-foreground", text: `${ev.payload.n}-day streak achieved!` };
+      return { icon: "??", color: "bg-warning/15 text-warning-foreground", text: `${ev.payload.n}-day streak achieved!` };
     case "xp_earned":
-      return { icon: "✨", color: "bg-primary/15 text-primary-dark", text: `Earned ${ev.payload.xp} XP` };
+      return { icon: "?", color: "bg-primary/15 text-primary-dark", text: `Earned ${ev.payload.xp} XP` };
   }
 }
 
@@ -319,6 +325,8 @@ function KidProfilePage() {
     const normalize = (eventType: string): ActivityEv["event_type"] => {
       const known = new Set<ActivityEv["event_type"]>([
         "quest_completed",
+        "quest_cycle_created",
+        "quest_missed",
         "test_completed",
         "level_up",
         "achievement_earned",
@@ -1256,4 +1264,5 @@ function ConfettiStrip() {
     </div>
   );
 }
+
 

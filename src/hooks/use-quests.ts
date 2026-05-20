@@ -1,12 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
 
+export type QuestFrequency = "once" | "daily" | "weekly" | "monthly";
+
 export interface AssignedMember {
+  assignmentId: number;
   userId: number;
   username: string;
   avatarColor: string | null;
-  status: "pending" | "completed";
+  status: "pending" | "completed" | "missed";
   completedAt: string | null;
+  cycleIndex: number;
+  cycleDueAt: string | null;
+  cycleStartAt: string;
 }
 
 export interface QuestItem {
@@ -17,8 +23,10 @@ export interface QuestItem {
   difficulty: string;
   xpReward: number;
   dueDate: string | null;
-  isRecurring: boolean;
-  status: "pending" | "completed";
+  frequency: QuestFrequency;
+  nextOccurrenceAt: string | null;
+  recurrenceEndAt: string | null;
+  status: "pending" | "completed" | "missed";
   assignedMembers: AssignedMember[];
   createdAt: string;
 }
@@ -40,7 +48,7 @@ export interface QuestCompleteResult {
 
 export function useQuests(
   familyId: number | null,
-  options?: { search?: string; status?: "all" | "pending" | "completed" },
+  options?: { search?: string; status?: "all" | "pending" | "completed" | "missed" },
 ) {
   return useQuery({
     queryKey: ["quests", familyId, options?.search ?? "", options?.status ?? "all"],
@@ -73,7 +81,8 @@ export function useCreateQuest(familyId: number | null) {
       difficulty?: string;
       xpReward?: number;
       dueDate?: string | null;
-      isRecurring?: boolean;
+      frequency?: QuestFrequency;
+      recurrenceEndAt?: string | null;
       assignedUserIds?: number[];
     }) =>
       apiRequest<QuestItem>(`/api/families/${familyId}/quests`, {
@@ -86,16 +95,16 @@ export function useCreateQuest(familyId: number | null) {
   });
 }
 
-export function useCompleteQuest(familyId: number | null, questId: number | null) {
+export function useCompleteQuest(familyId: number | null, assignmentId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiRequest<QuestCompleteResult>(`/api/families/${familyId}/quests/${questId}/complete`, {
+      apiRequest<QuestCompleteResult>(`/api/families/${familyId}/quest-assignments/${assignmentId}/complete`, {
         method: "POST",
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["quests", familyId] });
-      queryClient.invalidateQueries({ queryKey: ["quest", familyId, questId] });
+      queryClient.invalidateQueries({ queryKey: ["quest", familyId] });
     },
   });
 }
@@ -110,7 +119,8 @@ export function useUpdateQuest(familyId: number | null, questId: number | null) 
       difficulty?: string;
       xpReward?: number;
       dueDate?: string | null;
-      isRecurring?: boolean;
+      frequency?: QuestFrequency;
+      recurrenceEndAt?: string | null;
     }) =>
       apiRequest<QuestItem>(`/api/families/${familyId}/quests/${questId}`, {
         method: "PATCH",
