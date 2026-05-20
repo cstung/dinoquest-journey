@@ -1,5 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 import { apiRequest } from "@/lib/api";
+
+export const MAX_REWARD_XP_COST = 1_000_000_000;
+
+const rewardCreateSchema = z.object({
+  title: z.string(),
+  description: z.string().nullable().optional(),
+  thumbnailUrl: z.string().nullable().optional(),
+  xpCost: z.number().min(1).max(MAX_REWARD_XP_COST),
+});
+
+const rewardUpdateSchema = z.object({
+  title: z.string().optional(),
+  description: z.string().nullable().optional(),
+  thumbnailUrl: z.string().nullable().optional(),
+  xpCost: z.number().min(1).max(MAX_REWARD_XP_COST).optional(),
+  isActive: z.boolean().optional(),
+});
 
 export interface RewardItem {
   id: number;
@@ -61,7 +79,7 @@ export function useCreateReward(familyId: number | null) {
     }) =>
       apiRequest<RewardItem>(`/api/families/${familyId}/rewards`, {
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify(rewardCreateSchema.parse(body)),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rewards", familyId] });
@@ -81,7 +99,7 @@ export function useUpdateReward(familyId: number | null, rewardId: number | null
     }) =>
       apiRequest<RewardItem>(`/api/families/${familyId}/rewards/${rewardId}`, {
         method: "PATCH",
-        body: JSON.stringify(body),
+        body: JSON.stringify(rewardUpdateSchema.parse(body)),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rewards", familyId] });

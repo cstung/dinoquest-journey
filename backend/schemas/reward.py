@@ -28,7 +28,7 @@ class RewardCreate(APIModel):
     title: str
     description: str | None = None
     thumbnail_url: str | None = None
-    xp_cost: int = Field(ge=1, le=100000)
+    xp_cost: int = Field(ge=1, le=1_000_000_000)
 
     @field_validator("title")
     @classmethod
@@ -48,7 +48,7 @@ class RewardUpdate(APIModel):
     title: str | None = None
     description: str | None = None
     thumbnail_url: str | None = None
-    xp_cost: int | None = Field(default=None, ge=1, le=100000)
+    xp_cost: int | None = Field(default=None, ge=1, le=1_000_000_000)
     is_active: bool | None = None
 
     @field_validator("title")

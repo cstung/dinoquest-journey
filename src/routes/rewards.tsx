@@ -4,6 +4,7 @@ import { Plus, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useFamilyStore } from "@/store";
 import {
+  MAX_REWARD_XP_COST,
   useClaimReward,
   useCreateReward,
   useResolveRewardClaim,
@@ -60,6 +61,10 @@ function RewardsPage() {
 
   const create = async () => {
     setMessage(null);
+    if (newCost > MAX_REWARD_XP_COST) {
+      setMessage(`XP cost cannot exceed ${MAX_REWARD_XP_COST.toLocaleString()}.`);
+      return;
+    }
     try {
       await createReward.mutateAsync({
         title: newTitle,
@@ -133,6 +138,7 @@ function RewardsPage() {
             value={newCost}
             onChange={(e) => setNewCost(Number(e.target.value))}
             min={1}
+            max={MAX_REWARD_XP_COST}
             className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold text-sm focus:outline-none focus:border-primary"
           />
           <button
@@ -206,12 +212,9 @@ function RewardCard({
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(reward.thumbnailUrl ?? null);
   const [thumbnailFileName, setThumbnailFileName] = useState<string | null>(null);
   const [xpCost, setXpCost] = useState(reward.xpCost);
-  const [titleExpanded, setTitleExpanded] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const displayThumbnail = editMode ? thumbnailUrl : reward.thumbnailUrl;
-  const titleText = reward.title.trim();
-  const canExpandTitle = titleText.length > 40;
   const descriptionText = reward.description?.trim() ?? "";
   const canExpandDescription = descriptionText.length > 120;
 
@@ -227,6 +230,10 @@ function RewardCard({
 
   const onSave = async () => {
     setMessage(null);
+    if (xpCost > MAX_REWARD_XP_COST) {
+      setMessage(`XP cost cannot exceed ${MAX_REWARD_XP_COST.toLocaleString()}.`);
+      return;
+    }
     try {
       await updateReward.mutateAsync({
         title,
@@ -279,6 +286,7 @@ function RewardCard({
           <input
             type="number"
             min={1}
+            max={MAX_REWARD_XP_COST}
             value={xpCost}
             onChange={(e) => setXpCost(Number(e.target.value))}
             className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm font-bold"
@@ -316,44 +324,12 @@ function RewardCard({
       ) : (
         <>
           <div className="min-h-[3.25rem]">
-            <h3
-              className="font-display font-extrabold text-lg break-words"
-              style={
-                titleExpanded
-                  ? undefined
-                  : {
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }
-              }
-            >
-              {titleText}
+            <h3 className="font-display font-extrabold text-lg truncate" title={reward.title}>
+              {reward.title}
             </h3>
-            {canExpandTitle && (
-              <button
-                onClick={() => setTitleExpanded((value) => !value)}
-                className="mt-1 text-xs font-extrabold uppercase text-primary"
-              >
-                {titleExpanded ? "Read less" : "Read more"}
-              </button>
-            )}
           </div>
           <div className="flex-1 min-h-[3.75rem]">
-            <p
-              className="text-sm text-muted-foreground break-words"
-              style={
-                descriptionExpanded
-                  ? undefined
-                  : {
-                      display: "-webkit-box",
-                      WebkitLineClamp: 3,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }
-              }
-            >
+            <p className={cn("text-sm text-muted-foreground break-words", !descriptionExpanded && "line-clamp-3")}>
               {descriptionText || "No description."}
             </p>
             {canExpandDescription && (
@@ -361,7 +337,7 @@ function RewardCard({
                 onClick={() => setDescriptionExpanded((value) => !value)}
                 className="mt-1 text-xs font-extrabold uppercase text-primary"
               >
-                {descriptionExpanded ? "Read less" : "Read more"}
+                {descriptionExpanded ? "Show less" : "Read more"}
               </button>
             )}
           </div>
@@ -411,7 +387,7 @@ function RewardCard({
                     reward.isActive ? "bg-destructive text-destructive-foreground" : "bg-secondary",
                   )}
                 >
-                  {reward.isActive ? "Delete" : "Activate"}
+                  {reward.isActive ? "Deactivate" : "Activate"}
                 </button>
               </>
             )}
