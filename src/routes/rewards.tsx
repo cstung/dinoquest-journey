@@ -212,11 +212,9 @@ function RewardCard({
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(reward.thumbnailUrl ?? null);
   const [thumbnailFileName, setThumbnailFileName] = useState<string | null>(null);
   const [xpCost, setXpCost] = useState(reward.xpCost);
-  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const displayThumbnail = editMode ? thumbnailUrl : reward.thumbnailUrl;
   const descriptionText = reward.description?.trim() ?? "";
-  const canExpandDescription = descriptionText.length > 120;
 
   const onClaim = async () => {
     setMessage(null);
@@ -252,7 +250,6 @@ function RewardCard({
     setMessage(null);
     try {
       await updateReward.mutateAsync({ isActive: !reward.isActive });
-      setMessage(reward.isActive ? "Reward deactivated." : "Reward activated.");
     } catch (err) {
       setMessage((err as Error).message);
     }
@@ -265,7 +262,7 @@ function RewardCard({
           <img
             src={displayThumbnail}
             alt={reward.title}
-            className="size-full object-cover rounded-2xl"
+            className={cn("size-full object-cover rounded-2xl", !reward.isActive && "grayscale saturate-0")}
           />
         ) : (
           "🎁"
@@ -329,17 +326,9 @@ function RewardCard({
             </h3>
           </div>
           <div className="flex-1 min-h-[3.75rem]">
-            <p className={cn("text-sm text-muted-foreground break-words", !descriptionExpanded && "line-clamp-3")}>
+            <p className="text-sm text-muted-foreground break-words line-clamp-3">
               {descriptionText || "No description."}
             </p>
-            {canExpandDescription && (
-              <button
-                onClick={() => setDescriptionExpanded((value) => !value)}
-                className="mt-1 text-xs font-extrabold uppercase text-primary"
-              >
-                {descriptionExpanded ? "Show less" : "Read more"}
-              </button>
-            )}
           </div>
         </>
       )}
@@ -347,14 +336,6 @@ function RewardCard({
         <span className="font-display font-extrabold text-warning text-lg">{reward.xpCost} XP</span>
         {isParent ? (
           <div className="flex gap-2">
-            <span
-              className={cn(
-                "text-xs font-bold uppercase",
-                reward.isActive ? "text-primary" : "text-muted-foreground",
-              )}
-            >
-              {reward.isActive ? "Active" : "Inactive"}
-            </span>
             {editMode ? (
               <>
                 <button
@@ -418,7 +399,7 @@ function RewardCard({
           </>
         )}
       </div>
-      {message && <p className="text-xs text-muted-foreground mt-2">{message}</p>}
+      {!isParent && message && <p className="text-xs text-muted-foreground mt-2">{message}</p>}
     </div>
   );
 }
