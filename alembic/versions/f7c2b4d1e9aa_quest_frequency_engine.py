@@ -52,9 +52,16 @@ def upgrade() -> None:
     if "cycle_start_at" not in qa_cols:
         op.add_column(
             "quest_assignments",
-            sa.Column("cycle_start_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.Column("cycle_start_at", sa.DateTime(timezone=True), nullable=True),
         )
-    op.execute("UPDATE quest_assignments SET cycle_start_at = COALESCE(cycle_start_at, created_at)")
+    op.execute("UPDATE quest_assignments SET cycle_start_at = COALESCE(cycle_start_at, created_at, CURRENT_TIMESTAMP)")
+    with op.batch_alter_table("quest_assignments") as batch_op:
+        batch_op.alter_column(
+            "cycle_start_at",
+            existing_type=sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        )
 
     unique_constraints = {uc["name"] for uc in inspector.get_unique_constraints("quest_assignments") if uc.get("name")}
     with op.batch_alter_table("quest_assignments") as batch_op:
