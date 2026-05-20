@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
@@ -34,6 +34,14 @@ def _parse_cursor(cursor: str | None) -> datetime | None:
     dt = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _as_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
 
 
@@ -400,11 +408,8 @@ async def delete_quest(
     if not quest:
         raise HTTPException(status_code=404, detail="Quest not found")
 
-    assignments = (
-        await db.execute(select(QuestAssignment).where(QuestAssignment.quest_id == quest.id))
-    ).scalars().all()
-    for assignment in assignments:
-        await db.delete(assignment)
+    await db.execute(sa_delete(QuestAssignment).where(QuestAssignment.quest_id == quest.id))
+    await db.flush()
     await db.delete(quest)
 
     db.add(
@@ -444,7 +449,8 @@ async def _complete_assignment(
         raise HTTPException(status_code=400, detail="Deadline has passed for this cycle.")
 
     now_utc = datetime.now(timezone.utc)
-    if assignment.cycle_due_at and now_utc > assignment.cycle_due_at:
+    cycle_due_at = _as_utc(assignment.cycle_due_at)
+    if cycle_due_at and now_utc > cycle_due_at:
         raise HTTPException(status_code=400, detail="Deadline has passed for this cycle. Your streak will be broken.")
 
     assignment.status = "pending_approval"
@@ -565,7 +571,7 @@ async def resolve_quest_assignment(
         assignment.status = "completed"
         assignment.completed_at = now_utc
         assignment.xp_awarded = quest.xp_reward
-        completion_base = assignment.completion_requested_at or now_utc
+        completion_base = _as_utc(assignment.completion_requested_at) or now_utc
         await update_streak(
             user_id=assignment.user_id,
             family_id=assignment.family_id,
