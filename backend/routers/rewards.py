@@ -136,6 +136,37 @@ async def claim_reward(
     if not reward:
         raise HTTPException(status_code=404, detail="Reward not found")
 
+    existing_pending_claim = (
+        await db.execute(
+            select(RewardClaim).where(
+                RewardClaim.reward_id == reward.id,
+                RewardClaim.user_id == membership.user_id,
+                RewardClaim.family_id == membership.family_id,
+                RewardClaim.status == "pending",
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_pending_claim:
+        raise HTTPException(
+            status_code=409,
+            detail="You already have a pending claim for this reward.",
+        )
+
+    level_row = (
+        await db.execute(
+            select(UserFamilyLevel).where(
+                UserFamilyLevel.family_id == membership.family_id,
+                UserFamilyLevel.user_id == membership.user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    current_xp = level_row.total_xp if level_row else 0
+    if current_xp < reward.xp_cost:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient XP to claim this reward.",
+        )
+
     claim = RewardClaim(
         reward_id=reward.id,
         family_id=membership.family_id,

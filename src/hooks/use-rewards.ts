@@ -30,7 +30,7 @@ export function useRewards(familyId: number | null, includeInactive: boolean) {
     queryKey: ["rewards", familyId, includeInactive],
     queryFn: () =>
       apiRequest<RewardItem[]>(
-        `/api/families/${familyId}/rewards?includeInactive=${includeInactive}`,
+        `/api/families/${familyId}/rewards?include_inactive=${includeInactive}`,
       ),
     enabled: !!familyId,
   });

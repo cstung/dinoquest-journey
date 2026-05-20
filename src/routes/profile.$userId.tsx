@@ -122,7 +122,7 @@ interface ActivityEv {
     | "test_completed"
     | "level_up"
     | "achievement_earned"
-    | "reward_claimed"
+    | "reward_claim_requested"
     | "streak_milestone"
     | "xp_earned";
   created_at: string;
@@ -238,8 +238,8 @@ function eventText(ev: ActivityEv): { icon: string; text: string; color: string 
       return { icon: "🚀", color: "bg-warning/15 text-warning-foreground", text: `Reached Level ${ev.payload.level}!` };
     case "achievement_earned":
       return { icon: "🏅", color: "bg-purple/15 text-purple", text: `Earned "${ev.payload.achievement_name}" Medal` };
-    case "reward_claimed":
-      return { icon: "🎁", color: "bg-pink/15 text-pink", text: `Claimed "${ev.payload.reward_title}" reward` };
+    case "reward_claim_requested":
+      return { icon: "🎁", color: "bg-pink/15 text-pink", text: `Claimed "${ev.payload.reward_title ?? "a reward"}" reward` };
     case "streak_milestone":
       return { icon: "🔥", color: "bg-warning/15 text-warning-foreground", text: `${ev.payload.n}-day streak achieved!` };
     case "xp_earned":
@@ -322,7 +322,7 @@ function KidProfilePage() {
         "test_completed",
         "level_up",
         "achievement_earned",
-        "reward_claimed",
+        "reward_claim_requested",
         "streak_milestone",
         "xp_earned",
       ]);
@@ -1256,6 +1256,4 @@ function ConfettiStrip() {
     </div>
   );
 }
-
-
 

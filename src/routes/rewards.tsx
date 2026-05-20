@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Plus, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useFamilyStore } from "@/store";
+import { useAuthStore, useFamilyStore } from "@/store";
 import {
   useClaimReward,
   useCreateReward,
@@ -19,7 +19,8 @@ export const Route = createFileRoute("/rewards")({ component: RewardsPage });
 function RewardsPage() {
   const familyId = useFamilyStore((s) => s.activeFamilyId);
   const role = useFamilyStore((s) => s.activeFamilyRole);
-  const isParent = role === "parent";
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  const isParent = role === "parent" || role === "superadmin";
 
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -49,7 +50,13 @@ function RewardsPage() {
   }
 
   const rewards = rewardsQuery.data ?? [];
-  const pendingClaims = claimsQuery.data ?? [];
+  const claims = claimsQuery.data ?? [];
+  const pendingClaims = claims.filter((claim) => claim.status === "pending");
+  const pendingClaimRewardIds = new Set(
+    claims
+      .filter((claim) => claim.status === "pending" && claim.userId === currentUserId)
+      .map((claim) => claim.rewardId),
+  );
 
   const create = async () => {
     setMessage(null);
@@ -148,6 +155,7 @@ function RewardsPage() {
             familyId={familyId}
             balance={balance}
             isParent={isParent}
+            hasPendingClaim={pendingClaimRewardIds.has(r.id)}
           />
         ))}
       </div>
@@ -174,6 +182,7 @@ function RewardCard({
   familyId,
   balance,
   isParent,
+  hasPendingClaim,
 }: {
   reward: {
     id: number;
@@ -186,6 +195,7 @@ function RewardCard({
   familyId: number;
   balance: number;
   isParent: boolean;
+  hasPendingClaim: boolean;
 }) {
   const affordable = balance >= reward.xpCost;
   const claim = useClaimReward(familyId, reward.id);
@@ -407,18 +417,29 @@ function RewardCard({
             )}
           </div>
         ) : (
-          <button
-            disabled={!affordable || claim.isPending}
-            onClick={onClaim}
-            className={cn(
-              "rounded-xl font-display font-extrabold uppercase text-xs px-4 py-2.5",
-              affordable
-                ? "bg-primary text-primary-foreground btn-pop"
-                : "bg-muted text-muted-foreground cursor-not-allowed",
+          <>
+            <button
+              disabled={!affordable || claim.isPending || hasPendingClaim}
+              onClick={onClaim}
+              className={cn(
+                "rounded-xl font-display font-extrabold uppercase text-xs px-4 py-2.5",
+                affordable && !hasPendingClaim
+                  ? "bg-primary text-primary-foreground btn-pop"
+                  : "bg-muted text-muted-foreground cursor-not-allowed",
+              )}
+            >
+              {claim.isPending
+                ? "Sending..."
+                : hasPendingClaim
+                  ? "Pending"
+                  : affordable
+                    ? "Claim"
+                    : "Not enough"}
+            </button>
+            {hasPendingClaim && (
+              <p className="text-xs text-muted-foreground mt-2">Claim request already pending</p>
             )}
-          >
-            {claim.isPending ? "Sending..." : affordable ? "Claim" : "Not enough"}
-          </button>
+          </>
         )}
       </div>
       {message && <p className="text-xs text-muted-foreground mt-2">{message}</p>}
