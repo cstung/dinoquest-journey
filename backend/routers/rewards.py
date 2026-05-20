@@ -97,6 +97,21 @@ async def update_reward(
     if "xp_cost" in body.model_fields_set and body.xp_cost is not None:
         item.xp_cost = body.xp_cost
     if "is_active" in body.model_fields_set and body.is_active is not None:
+        if body.is_active is False:
+            pending_claim = (
+                await db.execute(
+                    select(RewardClaim).where(
+                        RewardClaim.reward_id == item.id,
+                        RewardClaim.family_id == parent_member.family_id,
+                        RewardClaim.status == "pending",
+                    )
+                )
+            ).scalars().first()
+            if pending_claim:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Cannot deactivate reward while pending claim requests exist.",
+                )
         item.is_active = body.is_active
 
     db.add(

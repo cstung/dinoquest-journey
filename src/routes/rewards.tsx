@@ -53,6 +53,7 @@ function RewardsPage() {
   const rewards = rewardsQuery.data ?? [];
   const claims = claimsQuery.data ?? [];
   const pendingClaims = claims.filter((claim) => claim.status === "pending");
+  const rewardsWithPendingClaims = new Set(pendingClaims.map((claim) => claim.rewardId));
   const pendingClaimRewardIds = new Set(
     claims
       .filter((claim) => claim.status === "pending" && claim.userId === currentUserId)
@@ -162,6 +163,7 @@ function RewardsPage() {
             balance={balance}
             isParent={isParent}
             hasPendingClaim={pendingClaimRewardIds.has(r.id)}
+            hasPendingClaimsForReward={rewardsWithPendingClaims.has(r.id)}
           />
         ))}
       </div>
@@ -189,6 +191,7 @@ function RewardCard({
   balance,
   isParent,
   hasPendingClaim,
+  hasPendingClaimsForReward,
 }: {
   reward: {
     id: number;
@@ -202,6 +205,7 @@ function RewardCard({
   balance: number;
   isParent: boolean;
   hasPendingClaim: boolean;
+  hasPendingClaimsForReward: boolean;
 }) {
   const affordable = balance >= reward.xpCost;
   const claim = useClaimReward(familyId, reward.id);
@@ -212,7 +216,7 @@ function RewardCard({
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(reward.thumbnailUrl ?? null);
   const [thumbnailFileName, setThumbnailFileName] = useState<string | null>(null);
   const [xpCost, setXpCost] = useState(reward.xpCost);
-  const [message, setMessage] = useState<string | null>(null);
+  const [, setMessage] = useState<string | null>(null);
   const displayThumbnail = editMode ? thumbnailUrl : reward.thumbnailUrl;
   const descriptionText = reward.description?.trim() ?? "";
 
@@ -362,10 +366,11 @@ function RewardCard({
                 </button>
                 <button
                   onClick={toggleActive}
-                  disabled={updateReward.isPending}
+                  disabled={updateReward.isPending || (reward.isActive && hasPendingClaimsForReward)}
                   className={cn(
                     "rounded-lg text-xs font-extrabold uppercase px-2 py-1",
                     reward.isActive ? "bg-destructive text-destructive-foreground" : "bg-secondary",
+                    reward.isActive && hasPendingClaimsForReward && "opacity-60 cursor-not-allowed",
                   )}
                 >
                   {reward.isActive ? "Deactivate" : "Activate"}
@@ -393,13 +398,9 @@ function RewardCard({
                     ? "Claim"
                     : "Not enough"}
             </button>
-            {hasPendingClaim && (
-              <p className="text-xs text-muted-foreground mt-2">Claim request already pending</p>
-            )}
           </>
         )}
       </div>
-      {!isParent && message && <p className="text-xs text-muted-foreground mt-2">{message}</p>}
     </div>
   );
 }
