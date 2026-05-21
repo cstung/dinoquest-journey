@@ -14,6 +14,7 @@ from backend.services.quest_scheduler import run_quest_scheduler
 from backend.routers import (
     activity_log,
     auth,
+    dashboard,
     families,
     invites,
     join_requests,
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(members.router, prefix="/api/families", tags=["members"])
     app.include_router(invites.router, prefix="/api/families", tags=["invites"])
     app.include_router(activity_log.router, prefix="/api/families", tags=["activity"])
+    app.include_router(dashboard.router, prefix="/api/families", tags=["dashboard"])
     app.include_router(quests.router, prefix="/api/families", tags=["quests"])
     app.include_router(tests.router, prefix="/api/families", tags=["tests"])
     app.include_router(pets.router, prefix="/api/families", tags=["pets"])

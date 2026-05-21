@@ -1,4 +1,13 @@
 from backend.models.activity_log import ActivityLog
+from backend.models.dashboard import (
+    FamilyChallenge,
+    FamilyMoodCheckin,
+    FamilyPin,
+    FamilyPinAcknowledgement,
+    FamilyWallComment,
+    FamilyWallPost,
+    FamilyWallReaction,
+)
 from backend.models.family import Family
 from backend.models.family_invite import FamilyInvite
 from backend.models.family_member import FamilyMember
@@ -21,8 +30,15 @@ __all__ = [
     "Achievement",
     "ActivityLog",
     "Family",
+    "FamilyChallenge",
     "FamilyInvite",
     "FamilyMember",
+    "FamilyMoodCheckin",
+    "FamilyPin",
+    "FamilyPinAcknowledgement",
+    "FamilyWallComment",
+    "FamilyWallPost",
+    "FamilyWallReaction",
     "JoinRequest",
     "Pet",
     "PushSubscription",
@@ -40,4 +56,3 @@ __all__ = [
     "VideoTest",
     "XpEvent",
 ]
-

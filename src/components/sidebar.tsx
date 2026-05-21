@@ -18,7 +18,6 @@ import { XPBar } from "./xp-bar";
 import { useLeaderboard } from "@/hooks/use-leaderboard";
 
 const navItems = [
-  { icon: Home, label: "Home", to: "/" },
   { icon: ListChecks, label: "Quests", to: "/quests" },
   { icon: Video, label: "Tests", to: "/tests" },
   { icon: CalendarDays, label: "Calendar", to: "/calendar" },
@@ -26,14 +25,15 @@ const navItems = [
   { icon: Egg, label: "Pets", to: "/pets" },
   { icon: Gift, label: "Rewards", to: "/rewards" },
   { icon: Medal, label: "Achievements", to: "/achievements" },
-  { icon: Users, label: "Families", to: "/families" },
 ] as const;
 
 export function Sidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const user = useAuthStore((s) => s.user);
   const familyId = useFamilyStore((s) => s.activeFamilyId);
+  const activeFamilyRole = useFamilyStore((s) => s.activeFamilyRole);
   const isSuperAdmin = user?.globalRole === "superadmin";
+  const isKid = activeFamilyRole === "child";
   const familyYardActive =
     familyId != null && pathname.startsWith(`/families/${familyId}/dashboard`);
   const leaderboard = useLeaderboard(familyId, "family");
@@ -47,6 +47,33 @@ export function Sidebar() {
   return (
     <aside className="hidden md:flex md:w-64 lg:w-72 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
       <div className="flex-1 overflow-y-auto p-4 space-y-1">
+        <Link
+          to="/"
+          className={cn(
+            "flex items-center gap-3 px-4 py-3 rounded-2xl font-display font-extrabold text-sm transition-all border-2 border-transparent",
+            pathname === "/"
+              ? "bg-sidebar-accent text-sidebar-accent-foreground border-primary/30"
+              : "text-sidebar-foreground hover:bg-sidebar-accent/50",
+          )}
+        >
+          <Home className="size-5" strokeWidth={2.5} />
+          <span className="uppercase tracking-wide">Home</span>
+        </Link>
+        {familyId != null && (
+          <Link
+            to="/families/$familyId/dashboard"
+            params={{ familyId: String(familyId) }}
+            className={cn(
+              "flex items-center gap-3 px-4 py-3 rounded-2xl font-display font-extrabold text-sm transition-all border-2 border-transparent",
+              familyYardActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground border-primary/30"
+                : "text-sidebar-foreground hover:bg-sidebar-accent/50",
+            )}
+          >
+            <Trees className="size-5" strokeWidth={2.5} />
+            <span className="uppercase tracking-wide">Family Yard</span>
+          </Link>
+        )}
         {navItems.map((item) => {
           const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
           const Icon = item.icon;
@@ -66,19 +93,18 @@ export function Sidebar() {
             </Link>
           );
         })}
-        {familyId != null && (
+        {!isKid && (
           <Link
-            to="/families/$familyId/dashboard"
-            params={{ familyId: String(familyId) }}
+            to="/families"
             className={cn(
               "flex items-center gap-3 px-4 py-3 rounded-2xl font-display font-extrabold text-sm transition-all border-2 border-transparent",
-              familyYardActive
+              pathname.startsWith("/families") && !familyYardActive
                 ? "bg-sidebar-accent text-sidebar-accent-foreground border-primary/30"
                 : "text-sidebar-foreground hover:bg-sidebar-accent/50",
             )}
           >
-            <Trees className="size-5" strokeWidth={2.5} />
-            <span className="uppercase tracking-wide">Family Yard</span>
+            <Users className="size-5" strokeWidth={2.5} />
+            <span className="uppercase tracking-wide">Families</span>
           </Link>
         )}
         {isSuperAdmin && (
