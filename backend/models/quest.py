@@ -24,6 +24,7 @@ class Quest(Base):
     frequency: Mapped[str] = mapped_column(Text, nullable=False, default="once")
     next_occurrence_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     recurrence_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    recurrence_anchor_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

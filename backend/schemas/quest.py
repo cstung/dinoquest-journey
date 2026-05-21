@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 from pydantic import Field, field_validator
@@ -49,6 +49,16 @@ class QuestCreate(APIModel):
             return normalized
         raise ValueError("thumbnailUrl must be an image data URL or http(s) URL")
 
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_not_past(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        due = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        if due < datetime.now(timezone.utc):
+            raise ValueError("Due date cannot be in the past.")
+        return due
+
 
 class QuestUpdate(APIModel):
     title: str | None = None
@@ -65,6 +75,11 @@ class QuestUpdate(APIModel):
     @classmethod
     def validate_update_thumbnail_url(cls, value: str | None) -> str | None:
         return QuestCreate.validate_thumbnail_url(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_update_due_date_not_past(cls, value: datetime | None) -> datetime | None:
+        return QuestCreate.validate_due_date_not_past(value)
 
 
 class QuestCompleteOut(APIModel):

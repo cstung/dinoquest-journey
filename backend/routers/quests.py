@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import and_, delete as sa_delete, func, select
+from sqlalchemy import and_, delete as sa_delete, func, or_, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
@@ -26,6 +27,7 @@ from backend.services.streak_service import update_streak
 from backend.services.xp_engine import award_xp
 
 router = APIRouter()
+VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
 def _parse_cursor(cursor: str | None) -> datetime | None:
@@ -43,6 +45,11 @@ def _as_utc(dt: datetime | None) -> datetime | None:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+def _monthly_anchor_day(base_dt: datetime) -> int:
+    aware = _as_utc(base_dt) or datetime.now(timezone.utc)
+    return aware.astimezone(VN_TZ).day
 
 
 async def _load_assigned_members(quest_id: int, db: AsyncSession) -> list[QuestAssignedMemberOut]:
@@ -228,7 +235,12 @@ async def create_quest(
 ) -> QuestItemOut:
     now_utc = datetime.now(timezone.utc)
     frequency_value = body.frequency.value
-    next_occurrence_at = compute_next_occurrence(frequency_value, now_utc)
+    recurrence_anchor_day = _monthly_anchor_day(now_utc) if frequency_value == QuestFrequency.monthly.value else None
+    next_occurrence_at = compute_next_occurrence(
+        frequency_value,
+        now_utc,
+        monthly_anchor_day=recurrence_anchor_day,
+    )
 
     quest = Quest(
         family_id=parent_member.family_id,
@@ -243,6 +255,7 @@ async def create_quest(
         frequency=frequency_value,
         next_occurrence_at=next_occurrence_at,
         recurrence_end_at=body.recurrence_end_at,
+        recurrence_anchor_day=recurrence_anchor_day,
     )
     db.add(quest)
     await db.flush()
@@ -268,7 +281,15 @@ async def create_quest(
         )
         assignees = member_rows.scalars().all()
 
-    cycle_due = body.due_date if frequency_value == "once" else compute_cycle_due_at(frequency_value, now_utc)
+    cycle_due = (
+        body.due_date
+        if frequency_value == "once"
+        else compute_cycle_due_at(
+            frequency_value,
+            now_utc,
+            monthly_anchor_day=recurrence_anchor_day,
+        )
+    )
 
     for member in assignees:
         db.add(
@@ -320,12 +341,15 @@ async def quest_detail(
     if membership.role == "child":
         assigned = (
             await db.execute(
-                select(QuestAssignment).where(
+                select(QuestAssignment.id)
+                .where(
                     QuestAssignment.quest_id == quest_id,
                     QuestAssignment.user_id == membership.user_id,
+                    QuestAssignment.family_id == membership.family_id,
                 )
+                .order_by(QuestAssignment.cycle_index.desc(), QuestAssignment.id.desc())
             )
-        ).scalar_one_or_none()
+        ).first()
         if not assigned:
             raise HTTPException(status_code=403, detail="Quest not assigned to you")
 
@@ -346,6 +370,7 @@ async def update_quest(
     ).scalar_one_or_none()
     if not quest:
         raise HTTPException(status_code=404, detail="Quest not found")
+    previous_frequency = quest.frequency
 
     if body.title is not None:
         quest.title = body.title.strip()
@@ -361,14 +386,35 @@ async def update_quest(
         quest.xp_reward = body.xp_reward
     if "due_date" in body.model_fields_set:
         quest.due_date = body.due_date
+        if quest.frequency == QuestFrequency.once.value:
+            await db.execute(
+                sa_update(QuestAssignment)
+                .where(
+                    QuestAssignment.quest_id == quest.id,
+                    QuestAssignment.status.in_(["pending", "pending_approval"]),
+                )
+                .values(cycle_due_at=body.due_date)
+                .execution_options(synchronize_session=False)
+            )
     if "recurrence_end_at" in body.model_fields_set:
         quest.recurrence_end_at = body.recurrence_end_at
     if "frequency" in body.model_fields_set and body.frequency is not None:
         quest.frequency = body.frequency.value
         if quest.frequency == QuestFrequency.once.value:
             quest.next_occurrence_at = None
+            quest.recurrence_anchor_day = None
         else:
-            quest.next_occurrence_at = compute_next_occurrence(quest.frequency, datetime.now(timezone.utc))
+            if quest.frequency == QuestFrequency.monthly.value:
+                if previous_frequency != QuestFrequency.monthly.value or quest.recurrence_anchor_day is None:
+                    anchor_base = body.due_date or datetime.now(timezone.utc)
+                    quest.recurrence_anchor_day = _monthly_anchor_day(anchor_base)
+            else:
+                quest.recurrence_anchor_day = None
+            quest.next_occurrence_at = compute_next_occurrence(
+                quest.frequency,
+                datetime.now(timezone.utc),
+                monthly_anchor_day=quest.recurrence_anchor_day,
+            )
 
     db.add(
         ActivityLog(
@@ -441,22 +487,50 @@ async def _complete_assignment(
         raise HTTPException(status_code=403, detail="Not your assignment.")
     if membership.role != "child":
         raise HTTPException(status_code=403, detail="Only children can request quest completion.")
-    if assignment.status == "completed":
-        raise HTTPException(status_code=400, detail="Quest already completed for this cycle.")
-    if assignment.status == "pending_approval":
-        raise HTTPException(status_code=400, detail="Quest completion is already pending approval.")
-    if assignment.status == "missed":
-        raise HTTPException(status_code=400, detail="Deadline has passed for this cycle.")
-
     now_utc = datetime.now(timezone.utc)
-    cycle_due_at = _as_utc(assignment.cycle_due_at)
-    if cycle_due_at and now_utc > cycle_due_at:
-        raise HTTPException(status_code=400, detail="Deadline has passed for this cycle. Your streak will be broken.")
+    transition = await db.execute(
+        sa_update(QuestAssignment)
+        .where(
+            QuestAssignment.id == assignment.id,
+            QuestAssignment.user_id == current_user.id,
+            QuestAssignment.family_id == membership.family_id,
+            QuestAssignment.status == "pending",
+            or_(
+                QuestAssignment.cycle_due_at.is_(None),
+                QuestAssignment.cycle_due_at >= now_utc,
+            ),
+        )
+        .values(
+            status="pending_approval",
+            completion_requested_at=now_utc,
+            completed_at=None,
+            xp_awarded=0,
+            reviewed_at=None,
+            reviewed_by=None,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if transition.rowcount != 1:
+        latest = (
+            await db.execute(
+                select(QuestAssignment.status, QuestAssignment.cycle_due_at).where(
+                    QuestAssignment.id == assignment.id
+                )
+            )
+        ).one_or_none()
+        if latest is None:
+            raise HTTPException(status_code=404, detail="Quest assignment not found")
+        latest_status, latest_due = latest
+        latest_due_utc = _as_utc(latest_due)
+        if latest_status == "completed":
+            raise HTTPException(status_code=400, detail="Quest already completed for this cycle.")
+        if latest_status == "pending_approval":
+            raise HTTPException(status_code=400, detail="Quest completion is already pending approval.")
+        if latest_status == "missed" or (latest_due_utc and now_utc > latest_due_utc):
+            raise HTTPException(status_code=400, detail="Deadline has passed for this cycle. Your streak will be broken.")
+        raise HTTPException(status_code=409, detail="Quest status changed. Please refresh and try again.")
 
-    assignment.status = "pending_approval"
-    assignment.completion_requested_at = now_utc
-    assignment.completed_at = None
-    assignment.xp_awarded = 0
+    await db.refresh(assignment)
 
     db.add(
         ActivityLog(
@@ -560,10 +634,68 @@ async def resolve_quest_assignment(
         raise HTTPException(status_code=404, detail="Quest assignment not found")
 
     assignment, quest = result
+    now_utc = datetime.now(timezone.utc)
+    cycle_due_at = _as_utc(assignment.cycle_due_at)
+    is_overdue = cycle_due_at is not None and now_utc > cycle_due_at
+
+    if is_overdue:
+        overdue_transition = await db.execute(
+            sa_update(QuestAssignment)
+            .where(
+                QuestAssignment.id == assignment.id,
+                QuestAssignment.status == "pending_approval",
+            )
+            .values(
+                status="missed",
+                completed_at=None,
+                completion_requested_at=None,
+                reviewed_at=now_utc,
+                reviewed_by=parent_member.user_id,
+                xp_awarded=0,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if overdue_transition.rowcount == 1:
+            await update_streak(
+                user_id=assignment.user_id,
+                family_id=assignment.family_id,
+                completed_on_time=False,
+                db=db,
+                completed_at=now_utc,
+            )
+            db.add(
+                ActivityLog(
+                    family_id=assignment.family_id,
+                    user_id=parent_member.user_id,
+                    event_type="quest_missed",
+                    payload={"questId": quest.id, "questTitle": quest.title, "userId": assignment.user_id},
+                    is_audit=True,
+                )
+            )
+            await db.commit()
+            await db.refresh(assignment)
+            await emit_family_event(
+                assignment.family_id,
+                "quest_missed",
+                {"questTitle": quest.title, "userId": assignment.user_id},
+            )
+            await emit_family_event(
+                assignment.family_id,
+                "quest_updated",
+                {"action": "deadline_expired", "questId": quest.id, "assignmentId": assignment.id, "userId": assignment.user_id},
+            )
+            return QuestCompleteOut(
+                quest_id=quest.id,
+                assignment_id=assignment.id,
+                xp_awarded=0,
+                total_xp=0,
+                level=0,
+                status=assignment.status,
+            )
+
     if assignment.status != "pending_approval":
         raise HTTPException(status_code=400, detail="Quest assignment is not pending approval")
 
-    now_utc = datetime.now(timezone.utc)
     assignment.reviewed_at = now_utc
     assignment.reviewed_by = parent_member.user_id
 

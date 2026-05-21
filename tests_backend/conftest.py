@@ -9,9 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 
 def _prepare_env(tmp_path: Path) -> None:
+    db_path = (tmp_path / "dinoquest_test.db").resolve()
+    if db_path.exists():
+        db_path.unlink()
     os.environ["ENVIRONMENT"] = "development"
     os.environ["SECRET_KEY"] = "test-secret-key-1234567890"
-    os.environ["DB_PATH"] = str((tmp_path / "dinoquest_test.db").resolve())
+    os.environ["DB_PATH"] = str(db_path)
     os.environ["ALLOWED_ORIGINS"] = '["http://localhost:3000","http://localhost:5173"]'
 
 

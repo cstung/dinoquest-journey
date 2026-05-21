@@ -40,6 +40,10 @@ function NewQuest() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (dueDate && isPastDateInput(dueDate)) {
+      setError("Due date cannot be in the past.");
+      return;
+    }
     try {
       const created = await createQuest.mutateAsync({
         title,
@@ -237,6 +241,14 @@ function shortenFileName(name: string): string {
   const ext = hasExt ? name.slice(lastDot) : "";
   const base = hasExt ? name.slice(0, lastDot) : name;
   return `${base.slice(0, 3)}...${base.slice(-4)}${ext}`;
+}
+
+function isPastDateInput(value: string): boolean {
+  const selected = new Date(value);
+  selected.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return selected < today;
 }
 
 const inputCls = "w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary";

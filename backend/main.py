@@ -65,6 +65,8 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def start_scheduler() -> None:
+        # Catch up missed cycles and overdue assignments before serving traffic.
+        await run_quest_scheduler()
         scheduler.add_job(
             run_quest_scheduler,
             CronTrigger(hour=0, minute=0, second=0),
