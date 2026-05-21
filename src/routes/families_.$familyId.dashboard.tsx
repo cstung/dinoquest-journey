@@ -470,7 +470,12 @@ function FamilyDashboardPage() {
       }
       return ns;
     });
-    if (willOpen && !commentsByPost[postId]) {
+
+    const post = posts.find((p) => p.id === postId);
+    const cachedComments = commentsByPost[postId];
+    const needsFetch = !cachedComments || (post && post.commentCount > cachedComments.length);
+
+    if (willOpen && needsFetch) {
       try {
         const data = await apiRequest<{ comments: Comment[] } | Comment[]>(
           `/api/families/${familyId}/wall-posts/${postId}/comments`,
