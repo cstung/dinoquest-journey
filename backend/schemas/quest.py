@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
+from zoneinfo import ZoneInfo
 
 from pydantic import Field, field_validator
 
@@ -55,7 +56,9 @@ class QuestCreate(APIModel):
         if value is None:
             return None
         due = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-        if due < datetime.now(timezone.utc):
+        now_local_date = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
+        due_local_date = due.astimezone(ZoneInfo("Asia/Ho_Chi_Minh")).date()
+        if due_local_date < now_local_date:
             raise ValueError("Due date cannot be in the past.")
         return due
 
