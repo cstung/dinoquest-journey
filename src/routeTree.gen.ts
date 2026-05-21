@@ -27,6 +27,7 @@ import { Route as QuestsQuestIdRouteImport } from './routes/quests.$questId'
 import { Route as ProfileUserIdRouteImport } from './routes/profile.$userId'
 import { Route as FamiliesNewRouteImport } from './routes/families.new'
 import { Route as FamiliesFamilyIdRouteImport } from './routes/families.$familyId'
+import { Route as FamiliesFamilyIdDashboardRouteImport } from './routes/families.$familyId.dashboard'
 
 const RewardsRoute = RewardsRouteImport.update({
   id: '/rewards',
@@ -118,6 +119,12 @@ const FamiliesFamilyIdRoute = FamiliesFamilyIdRouteImport.update({
   path: '/families/$familyId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FamiliesFamilyIdDashboardRoute =
+  FamiliesFamilyIdDashboardRouteImport.update({
+    id: '/dashboard',
+    path: '/dashboard',
+    getParentRoute: () => FamiliesFamilyIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -129,7 +136,7 @@ export interface FileRoutesByFullPath {
   '/pets': typeof PetsRoute
   '/register': typeof RegisterRoute
   '/rewards': typeof RewardsRoute
-  '/families/$familyId': typeof FamiliesFamilyIdRoute
+  '/families/$familyId': typeof FamiliesFamilyIdRouteWithChildren
   '/families/new': typeof FamiliesNewRoute
   '/profile/$userId': typeof ProfileUserIdRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/families/': typeof FamiliesIndexRoute
   '/quests/': typeof QuestsIndexRoute
   '/tests/': typeof TestsIndexRoute
+  '/families/$familyId/dashboard': typeof FamiliesFamilyIdDashboardRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -149,7 +157,7 @@ export interface FileRoutesByTo {
   '/pets': typeof PetsRoute
   '/register': typeof RegisterRoute
   '/rewards': typeof RewardsRoute
-  '/families/$familyId': typeof FamiliesFamilyIdRoute
+  '/families/$familyId': typeof FamiliesFamilyIdRouteWithChildren
   '/families/new': typeof FamiliesNewRoute
   '/profile/$userId': typeof ProfileUserIdRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
@@ -158,6 +166,7 @@ export interface FileRoutesByTo {
   '/families': typeof FamiliesIndexRoute
   '/quests': typeof QuestsIndexRoute
   '/tests': typeof TestsIndexRoute
+  '/families/$familyId/dashboard': typeof FamiliesFamilyIdDashboardRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -170,7 +179,7 @@ export interface FileRoutesById {
   '/pets': typeof PetsRoute
   '/register': typeof RegisterRoute
   '/rewards': typeof RewardsRoute
-  '/families/$familyId': typeof FamiliesFamilyIdRoute
+  '/families/$familyId': typeof FamiliesFamilyIdRouteWithChildren
   '/families/new': typeof FamiliesNewRoute
   '/profile/$userId': typeof ProfileUserIdRoute
   '/quests/$questId': typeof QuestsQuestIdRoute
@@ -179,6 +188,7 @@ export interface FileRoutesById {
   '/families/': typeof FamiliesIndexRoute
   '/quests/': typeof QuestsIndexRoute
   '/tests/': typeof TestsIndexRoute
+  '/families/$familyId/dashboard': typeof FamiliesFamilyIdDashboardRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -201,6 +211,7 @@ export interface FileRouteTypes {
     | '/families/'
     | '/quests/'
     | '/tests/'
+    | '/families/$familyId/dashboard'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -221,6 +232,7 @@ export interface FileRouteTypes {
     | '/families'
     | '/quests'
     | '/tests'
+    | '/families/$familyId/dashboard'
   id:
     | '__root__'
     | '/'
@@ -241,6 +253,7 @@ export interface FileRouteTypes {
     | '/families/'
     | '/quests/'
     | '/tests/'
+    | '/families/$familyId/dashboard'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -253,7 +266,7 @@ export interface RootRouteChildren {
   PetsRoute: typeof PetsRoute
   RegisterRoute: typeof RegisterRoute
   RewardsRoute: typeof RewardsRoute
-  FamiliesFamilyIdRoute: typeof FamiliesFamilyIdRoute
+  FamiliesFamilyIdRoute: typeof FamiliesFamilyIdRouteWithChildren
   FamiliesNewRoute: typeof FamiliesNewRoute
   ProfileUserIdRoute: typeof ProfileUserIdRoute
   QuestsQuestIdRoute: typeof QuestsQuestIdRoute
@@ -392,8 +405,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FamiliesFamilyIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/families/$familyId/dashboard': {
+      id: '/families/$familyId/dashboard'
+      path: '/dashboard'
+      fullPath: '/families/$familyId/dashboard'
+      preLoaderRoute: typeof FamiliesFamilyIdDashboardRouteImport
+      parentRoute: typeof FamiliesFamilyIdRoute
+    }
   }
 }
+
+interface FamiliesFamilyIdRouteChildren {
+  FamiliesFamilyIdDashboardRoute: typeof FamiliesFamilyIdDashboardRoute
+}
+
+const FamiliesFamilyIdRouteChildren: FamiliesFamilyIdRouteChildren = {
+  FamiliesFamilyIdDashboardRoute: FamiliesFamilyIdDashboardRoute,
+}
+
+const FamiliesFamilyIdRouteWithChildren =
+  FamiliesFamilyIdRoute._addFileChildren(FamiliesFamilyIdRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -405,7 +436,7 @@ const rootRouteChildren: RootRouteChildren = {
   PetsRoute: PetsRoute,
   RegisterRoute: RegisterRoute,
   RewardsRoute: RewardsRoute,
-  FamiliesFamilyIdRoute: FamiliesFamilyIdRoute,
+  FamiliesFamilyIdRoute: FamiliesFamilyIdRouteWithChildren,
   FamiliesNewRoute: FamiliesNewRoute,
   ProfileUserIdRoute: ProfileUserIdRoute,
   QuestsQuestIdRoute: QuestsQuestIdRoute,
