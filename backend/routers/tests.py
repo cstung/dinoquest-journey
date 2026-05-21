@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -664,12 +664,16 @@ async def update_test_availability(
     return await _list_item(test, parent_member, db)
 
 
-@router.delete("/{family_id}/tests/{test_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{family_id}/tests/{test_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 async def delete_test(
     test_id: int,
     parent_member: FamilyMember = Depends(require_parent),
     db: AsyncSession = Depends(get_db),
-) -> None:
+) -> Response:
     test = await _validate_test_access(test_id=test_id, membership=parent_member, db=db)
     test.status = "deleted"
     await db.commit()
@@ -678,7 +682,7 @@ async def delete_test(
         "test_updated",
         {"testId": test.id, "availabilityStatus": "deleted"},
     )
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
