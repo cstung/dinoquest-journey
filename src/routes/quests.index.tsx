@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { Plus, Search, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import {
   useCompleteQuest,
   useQuests,
@@ -33,6 +34,12 @@ type ParentApprovalItem = {
   cycleIndex: number;
 };
 
+type ActionResult = {
+  title: string;
+  message: string;
+  variant: ActionResultVariant;
+};
+
 function QuestsPage() {
   const role = useFamilyStore((s) => s.activeFamilyRole);
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
@@ -40,7 +47,7 @@ function QuestsPage() {
   const isParent = role === "parent" || role === "superadmin";
   const [tab, setTab] = useState<"all" | "pending" | "pending_approval" | "completed" | "missed">("all");
   const [search, setSearch] = useState("");
-  const [queueMessage, setQueueMessage] = useState<string | null>(null);
+  const [queueResult, setQueueResult] = useState<ActionResult | null>(null);
 
   const resolveCompletion = useResolveQuestCompletion(familyId);
   const { data, isLoading, error } = useQuests(familyId, { search, status: tab });
@@ -69,16 +76,28 @@ function QuestsPage() {
   }, [isParent, pendingApprovalQuery.data?.items]);
 
   const handleResolve = async (item: ParentApprovalItem, decision: "approve" | "reject") => {
-    setQueueMessage(null);
+    setQueueResult(null);
     try {
       const result = await resolveCompletion.mutateAsync({ assignmentId: item.assignmentId, decision });
       if (decision === "approve") {
-        setQueueMessage(`Approved '${item.questTitle}' (+${result.xpAwarded} XP).`);
+        setQueueResult({
+          title: "Completed",
+          message: `Approved '${item.questTitle}' (+${result.xpAwarded} XP).`,
+          variant: "success",
+        });
       } else {
-        setQueueMessage(`Rejected '${item.questTitle}'.`);
+        setQueueResult({
+          title: "Rejected",
+          message: `Rejected '${item.questTitle}'.`,
+          variant: "warning",
+        });
       }
     } catch (err) {
-      setQueueMessage((err as Error).message);
+      setQueueResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -170,7 +189,6 @@ function QuestsPage() {
               ))}
             </div>
           )}
-          {queueMessage && <p className="text-sm text-muted-foreground">{queueMessage}</p>}
         </div>
       )}
 
@@ -186,6 +204,13 @@ function QuestsPage() {
           <p className="font-bold">No quests here yet.</p>
         </div>
       )}
+      <ActionResultModal
+        open={!!queueResult}
+        title={queueResult?.title ?? ""}
+        message={queueResult?.message ?? ""}
+        variant={queueResult?.variant}
+        onClose={() => setQueueResult(null)}
+      />
     </div>
   );
 }
@@ -203,15 +228,23 @@ function QuestCard({
 }) {
   const myAssignment = quest.assignedMembers.find((m) => m.userId === currentUserId) ?? null;
   const completeMutation = useCompleteQuest(familyId, myAssignment?.assignmentId ?? null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<ActionResult | null>(null);
 
   const onMarkComplete = async () => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await completeMutation.mutateAsync();
-      setMessage("Completion request sent. Waiting for parent approval.");
+      setActionResult({
+        title: "Pending Approval",
+        message: "Completion request sent. Waiting for parent approval.",
+        variant: "warning",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -288,10 +321,13 @@ function QuestCard({
           </button>
         )}
       </div>
-      {!isParent && message && <p className="text-xs text-muted-foreground mt-2">{message}</p>}
-      {!isParent && myAssignment?.status === "pending_approval" && !message && (
-        <p className="text-xs text-muted-foreground mt-2">Waiting for parent confirmation.</p>
-      )}
+      <ActionResultModal
+        open={!!actionResult}
+        title={actionResult?.title ?? ""}
+        message={actionResult?.message ?? ""}
+        variant={actionResult?.variant}
+        onClose={() => setActionResult(null)}
+      />
     </div>
   );
 }

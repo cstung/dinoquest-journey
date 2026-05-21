@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Users, Mail, Activity, Shield, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useFamilyStore } from "@/store";
+import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import {
   useCreateInvite,
   useDeleteFamily,
@@ -29,6 +30,12 @@ const TABS = [
   { id: "settings", label: "Settings", icon: Settings },
 ] as const;
 
+type ActionResult = {
+  title: string;
+  message: string;
+  variant: ActionResultVariant;
+};
+
 function FamilyDetail() {
   const nav = useNavigate();
   const { familyId } = useParams({ from: "/families/$familyId" });
@@ -37,7 +44,7 @@ function FamilyDetail() {
   const clearActiveFamily = useFamilyStore((s) => s.clear);
   const familyIdNum = Number(familyId);
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("members");
-  const [message, setMessage] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const [inviteRole, setInviteRole] = useState<"parent" | "child">("child");
   const [latestJoinLink, setLatestJoinLink] = useState<string | null>(null);
 
@@ -91,37 +98,37 @@ function FamilyDetail() {
   };
 
   const onRevokeInvite = async (inviteId: number) => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await revokeInvite.mutateAsync(inviteId);
-      setMessage("Invite revoked.");
+      setActionResult({ title: "Updated", message: "Invite revoked.", variant: "success" });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
   const onRoleChange = async (userId: number, role: "parent" | "child") => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await updateMemberRole.mutateAsync({ userId, role });
-      setMessage("Member role updated.");
+      setActionResult({ title: "Updated", message: "Member role updated.", variant: "success" });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
   const onRemoveMember = async (userId: number) => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await removeMember.mutateAsync(userId);
-      setMessage("Member removed.");
+      setActionResult({ title: "Updated", message: "Member removed.", variant: "success" });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
   const onDeleteFamily = async () => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await deleteFamily.mutateAsync();
       if (activeFamilyId === familyIdNum) {
@@ -129,17 +136,21 @@ function FamilyDetail() {
       }
       nav({ to: "/families" });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
   const onResolveJoinRequest = async (joinRequestId: number, status: "approved" | "rejected") => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await resolveJoinRequest.mutateAsync({ joinRequestId, status });
-      setMessage(status === "approved" ? "Join request approved." : "Join request rejected.");
+      setActionResult({
+        title: status === "approved" ? "Approved" : "Rejected",
+        message: status === "approved" ? "Join request approved." : "Join request rejected.",
+        variant: status === "approved" ? "success" : "warning",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
@@ -167,7 +178,6 @@ function FamilyDetail() {
           </p>
         </div>
       </div>
-      {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
       <div className="flex gap-1 border-b-2 border-border overflow-x-auto">
         {TABS.map((t) => {
@@ -282,10 +292,10 @@ function FamilyDetail() {
                 />
                 <button
                   type="button"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(latestJoinLink);
-                    setMessage("Join link copied.");
-                  }}
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(latestJoinLink);
+                      setActionResult({ title: "Copied", message: "Join link copied.", variant: "info" });
+                    }}
                   className="rounded-xl bg-secondary font-display font-extrabold uppercase text-xs px-4"
                 >
                   Copy Link
@@ -329,7 +339,7 @@ function FamilyDetail() {
                       type="button"
                       onClick={async () => {
                         await navigator.clipboard.writeText(inv.joinLink);
-                        setMessage("Join link copied.");
+                        setActionResult({ title: "Copied", message: "Join link copied.", variant: "info" });
                       }}
                       className="rounded-lg bg-secondary px-2 py-1 text-xs font-bold"
                     >
@@ -347,7 +357,7 @@ function FamilyDetail() {
                         type="button"
                         onClick={async () => {
                           await navigator.clipboard.writeText(inv.qrJoinLink as string);
-                          setMessage("QR join link copied.");
+                          setActionResult({ title: "Copied", message: "QR join link copied.", variant: "info" });
                         }}
                         className="rounded-lg bg-secondary px-2 py-1 text-xs font-bold"
                       >
@@ -480,6 +490,13 @@ function FamilyDetail() {
           )}
         </form>
       )}
+      <ActionResultModal
+        open={!!actionResult}
+        title={actionResult?.title ?? ""}
+        message={actionResult?.message ?? ""}
+        variant={actionResult?.variant}
+        onClose={() => setActionResult(null)}
+      />
     </div>
   );
 }

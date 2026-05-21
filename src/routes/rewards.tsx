@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Plus, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useFamilyStore } from "@/store";
+import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import {
   MAX_REWARD_XP_COST,
   useClaimReward,
@@ -17,6 +18,12 @@ import { useLeaderboard } from "@/hooks/use-leaderboard";
 
 export const Route = createFileRoute("/rewards")({ component: RewardsPage });
 
+type ActionResult = {
+  title: string;
+  message: string;
+  variant: ActionResultVariant;
+};
+
 function RewardsPage() {
   const familyId = useFamilyStore((s) => s.activeFamilyId);
   const role = useFamilyStore((s) => s.activeFamilyRole);
@@ -28,7 +35,7 @@ function RewardsPage() {
   const [newThumbnailUrl, setNewThumbnailUrl] = useState<string | null>(null);
   const [newThumbnailFileName, setNewThumbnailFileName] = useState<string | null>(null);
   const [newCost, setNewCost] = useState(100);
-  const [message, setMessage] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<ActionResult | null>(null);
 
   const rewardsQuery = useRewards(familyId, isParent);
   const claimsQuery = useRewardClaims(familyId, isParent ? "pending" : undefined);
@@ -61,9 +68,13 @@ function RewardsPage() {
   );
 
   const create = async () => {
-    setMessage(null);
+    setActionResult(null);
     if (newCost > MAX_REWARD_XP_COST) {
-      setMessage(`XP cost cannot exceed ${MAX_REWARD_XP_COST.toLocaleString()}.`);
+      setActionResult({
+        title: "Action Failed",
+        message: `XP cost cannot exceed ${MAX_REWARD_XP_COST.toLocaleString()}.`,
+        variant: "error",
+      });
       return;
     }
     try {
@@ -78,9 +89,17 @@ function RewardsPage() {
       setNewThumbnailUrl(null);
       setNewThumbnailFileName(null);
       setNewCost(100);
-      setMessage("Reward created.");
+      setActionResult({
+        title: "Created",
+        message: "Reward created.",
+        variant: "success",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -127,9 +146,13 @@ function RewardsPage() {
                   const dataUrl = await fileToDataUrl(file);
                   setNewThumbnailUrl(dataUrl);
                   setNewThumbnailFileName(shortenFileName(file.name));
-                  setMessage(null);
+                  setActionResult(null);
                 } catch (err) {
-                  setMessage((err as Error).message);
+                  setActionResult({
+                    title: "Action Failed",
+                    message: (err as Error).message,
+                    variant: "error",
+                  });
                 }
               }}
             />
@@ -151,8 +174,6 @@ function RewardsPage() {
           </button>
         </div>
       )}
-
-      {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {rewards.map((r) => (
@@ -181,6 +202,13 @@ function RewardsPage() {
           </div>
         </div>
       )}
+      <ActionResultModal
+        open={!!actionResult}
+        title={actionResult?.title ?? ""}
+        message={actionResult?.message ?? ""}
+        variant={actionResult?.variant}
+        onClose={() => setActionResult(null)}
+      />
     </div>
   );
 }
@@ -216,24 +244,36 @@ function RewardCard({
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(reward.thumbnailUrl ?? null);
   const [thumbnailFileName, setThumbnailFileName] = useState<string | null>(null);
   const [xpCost, setXpCost] = useState(reward.xpCost);
-  const [, setMessage] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const displayThumbnail = editMode ? thumbnailUrl : reward.thumbnailUrl;
   const descriptionText = reward.description?.trim() ?? "";
 
   const onClaim = async () => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await claim.mutateAsync();
-      setMessage("Claim request sent.");
+      setActionResult({
+        title: "Pending Approval",
+        message: "Claim request sent.",
+        variant: "warning",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
   const onSave = async () => {
-    setMessage(null);
+    setActionResult(null);
     if (xpCost > MAX_REWARD_XP_COST) {
-      setMessage(`XP cost cannot exceed ${MAX_REWARD_XP_COST.toLocaleString()}.`);
+      setActionResult({
+        title: "Action Failed",
+        message: `XP cost cannot exceed ${MAX_REWARD_XP_COST.toLocaleString()}.`,
+        variant: "error",
+      });
       return;
     }
     try {
@@ -244,18 +284,35 @@ function RewardCard({
         xpCost,
       });
       setEditMode(false);
-      setMessage("Reward updated.");
+      setActionResult({
+        title: "Updated",
+        message: "Reward updated.",
+        variant: "success",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
   const toggleActive = async () => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await updateReward.mutateAsync({ isActive: !reward.isActive });
+      setActionResult({
+        title: "Updated",
+        message: reward.isActive ? "Reward deactivated." : "Reward activated.",
+        variant: "success",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -305,9 +362,13 @@ function RewardCard({
                   const dataUrl = await fileToDataUrl(file);
                   setThumbnailUrl(dataUrl);
                   setThumbnailFileName(shortenFileName(file.name));
-                  setMessage(null);
+                  setActionResult(null);
                 } catch (err) {
-                  setMessage((err as Error).message);
+                  setActionResult({
+                    title: "Action Failed",
+                    message: (err as Error).message,
+                    variant: "error",
+                  });
                 }
               }}
             />
@@ -401,21 +462,36 @@ function RewardCard({
           </>
         )}
       </div>
+      <ActionResultModal
+        open={!!actionResult}
+        title={actionResult?.title ?? ""}
+        message={actionResult?.message ?? ""}
+        variant={actionResult?.variant}
+        onClose={() => setActionResult(null)}
+      />
     </div>
   );
 }
 
 function ClaimRow({ familyId, claim }: { familyId: number; claim: RewardClaimItem }) {
   const resolve = useResolveRewardClaim(familyId, claim.id);
-  const [message, setMessage] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<ActionResult | null>(null);
 
   const decide = async (decision: "approved" | "rejected") => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await resolve.mutateAsync(decision);
-      setMessage(`Claim ${decision}.`);
+      setActionResult({
+        title: decision === "approved" ? "Approved" : "Rejected",
+        message: `Claim ${decision}.`,
+        variant: decision === "approved" ? "success" : "warning",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -445,7 +521,13 @@ function ClaimRow({ familyId, claim }: { familyId: number; claim: RewardClaimIte
           Reject
         </button>
       </div>
-      {message && <p className="text-xs text-muted-foreground w-full">{message}</p>}
+      <ActionResultModal
+        open={!!actionResult}
+        title={actionResult?.title ?? ""}
+        message={actionResult?.message ?? ""}
+        variant={actionResult?.variant}
+        onClose={() => setActionResult(null)}
+      />
     </div>
   );
 }

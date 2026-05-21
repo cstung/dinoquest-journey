@@ -6,6 +6,7 @@ import { XPBar } from "@/components/xp-bar";
 import { useFamilyStore } from "@/store";
 import { useCreatePet, useFeedPet, usePets, type PetItem } from "@/hooks/use-pets";
 import { apiRequest } from "@/lib/api";
+import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 
 export const Route = createFileRoute("/pets")({ component: PetsPage });
 
@@ -16,13 +17,19 @@ const STAGE_EMOJI: Record<string, string> = {
   evolved: "🐉",
 };
 
+type ActionResult = {
+  title: string;
+  message: string;
+  variant: ActionResultVariant;
+};
+
 function PetsPage() {
   const familyId = useFamilyStore((s) => s.activeFamilyId);
   const role = useFamilyStore((s) => s.activeFamilyRole);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [newName, setNewName] = useState("");
   const [newSpecies, setNewSpecies] = useState("Unknown");
-  const [message, setMessage] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const queryClient = useQueryClient();
 
   const petsQuery = usePets(familyId);
@@ -52,33 +59,35 @@ function PetsPage() {
   }
 
   const create = async () => {
-    setMessage(null);
+    setActionResult(null);
     try {
       const created = await createPet.mutateAsync({ name: newName, species: newSpecies });
       setNewName("");
       setActiveId(created.id);
-      setMessage("Pet created.");
+      setActionResult({ title: "Created", message: "Pet created.", variant: "success" });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
   const feed = async () => {
-    setMessage(null);
+    setActionResult(null);
     try {
       const result = await feedPet.mutateAsync();
-      setMessage(
-        result.levelUp
+      setActionResult({
+        title: result.levelUp ? "Level Up" : "Completed",
+        message: result.levelUp
           ? `Fed! +${result.gainedXp} XP and level up to ${result.level}.`
           : `Fed! +${result.gainedXp} XP.`,
-      );
+        variant: "success",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
   const setAsActive = async (pet: PetItem) => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await apiRequest<PetItem>(`/api/families/${familyId}/pets/${pet.id}`, {
         method: "PATCH",
@@ -86,8 +95,9 @@ function PetsPage() {
       });
       queryClient.invalidateQueries({ queryKey: ["pets", familyId] });
       setActiveId(pet.id);
+      setActionResult({ title: "Updated", message: "Active pet updated.", variant: "success" });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
@@ -117,7 +127,6 @@ function PetsPage() {
           >
             {createPet.isPending ? "Creating..." : "Create Pet"}
           </button>
-          {message && <p className="text-sm text-muted-foreground">{message}</p>}
         </div>
       ) : (
         <>
@@ -160,7 +169,6 @@ function PetsPage() {
                 </button>
               )}
             </div>
-            {message && <p className="text-sm text-muted-foreground">{message}</p>}
           </div>
 
           <div>
@@ -210,6 +218,13 @@ function PetsPage() {
           </div>
         </>
       )}
+      <ActionResultModal
+        open={!!actionResult}
+        title={actionResult?.title ?? ""}
+        message={actionResult?.message ?? ""}
+        variant={actionResult?.variant}
+        onClose={() => setActionResult(null)}
+      />
     </div>
   );
 }

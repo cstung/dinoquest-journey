@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { AlertCircle, Clock, Play, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFamilyStore } from "@/store";
+import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import {
   useReopenRequests,
   useResolveReopenRequest,
@@ -15,6 +16,12 @@ import {
 } from "@/hooks/use-tests";
 
 export const Route = createFileRoute("/tests/")({ component: TestsPage });
+
+type ActionResult = {
+  title: string;
+  message: string;
+  variant: ActionResultVariant;
+};
 
 function TestsPage() {
   const familyId = useFamilyStore((s) => s.activeFamilyId);
@@ -122,7 +129,7 @@ function TestCard({
 }) {
   const [attempt, setAttempt] = useState<TestAttemptStart | null>(null);
   const [answers, setAnswers] = useState<Record<number, number>>({});
-  const [message, setMessage] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const startMutation = useStartTest(familyId, test.id);
   const submitMutation = useSubmitTest(familyId, test.id);
   const reopenMutation = useRequestReopen(familyId, test.id);
@@ -134,7 +141,7 @@ function TestCard({
   const resolveReopenMutation = useResolveReopenRequest(familyId, test.id);
 
   const openAttempt = async () => {
-    setMessage(null);
+    setActionResult(null);
     try {
       const data = await startMutation.mutateAsync();
       const defaultAnswers: Record<number, number> = {};
@@ -142,13 +149,13 @@ function TestCard({
       setAnswers(defaultAnswers);
       setAttempt(data);
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
   const submitAttempt = async () => {
     if (!attempt) return;
-    setMessage(null);
+    setActionResult(null);
     try {
       const result = await submitMutation.mutateAsync({
         attemptId: attempt.attemptId,
@@ -158,33 +165,44 @@ function TestCard({
         })),
       });
       setAttempt(null);
-      setMessage(`Submitted: ${result.scorePct}% score, +${result.xpEarned} XP.`);
+      setActionResult({
+        title: "Completed",
+        message: `Submitted: ${result.scorePct}% score, +${result.xpEarned} XP.`,
+        variant: "success",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
   const requestReopen = async () => {
-    setMessage(null);
+    setActionResult(null);
     try {
       await reopenMutation.mutateAsync({ reason: "Need another attempt to improve score" });
-      setMessage("Reopen request sent to parent.");
+      setActionResult({
+        title: "Pending Approval",
+        message: "Reopen request sent to parent.",
+        variant: "warning",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
   const resolveReopen = async (requestId: number, decision: "approve" | "reject") => {
-    setMessage(null);
+    setActionResult(null);
     try {
       const result = await resolveReopenMutation.mutateAsync({ requestId, decision });
-      setMessage(
-        decision === "approve"
-          ? `Reopen approved (XP delta ${result.xpDelta}).`
-          : "Reopen request rejected.",
-      );
+      setActionResult({
+        title: decision === "approve" ? "Approved" : "Rejected",
+        message:
+          decision === "approve"
+            ? `Reopen approved (XP delta ${result.xpDelta}).`
+            : "Reopen request rejected.",
+        variant: decision === "approve" ? "success" : "warning",
+      });
     } catch (err) {
-      setMessage((err as Error).message);
+      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
     }
   };
 
@@ -273,8 +291,6 @@ function TestCard({
         </div>
       </div>
 
-      {message && <p className="text-sm text-muted-foreground">{message}</p>}
-
       {isParent && (reopenRequestsQuery.data?.length ?? 0) > 0 && (
         <div className="rounded-2xl border-2 border-border p-4 bg-background space-y-3">
           <h4 className="font-display font-extrabold text-base">Pending Reopen Requests</h4>
@@ -360,6 +376,13 @@ function TestCard({
           </div>
         </div>
       )}
+      <ActionResultModal
+        open={!!actionResult}
+        title={actionResult?.title ?? ""}
+        message={actionResult?.message ?? ""}
+        variant={actionResult?.variant}
+        onClose={() => setActionResult(null)}
+      />
     </div>
   );
 }

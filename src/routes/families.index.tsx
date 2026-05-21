@@ -3,8 +3,15 @@ import { Plus, Users, ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { useFamilies, useJoinFamily } from "@/hooks/use-families";
+import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 
 export const Route = createFileRoute("/families/")({ component: FamiliesLobby });
+
+type ActionResult = {
+  title: string;
+  message: string;
+  variant: ActionResultVariant;
+};
 
 function FamiliesLobby() {
   const { activeFamilyId, setActiveFamily } = useFamilyStore();
@@ -12,7 +19,7 @@ function FamiliesLobby() {
   const { data: families = [], isLoading, error } = useFamilies();
   const joinFamily = useJoinFamily();
   const [joinCode, setJoinCode] = useState("");
-  const [joinMessage, setJoinMessage] = useState<string | null>(null);
+  const [joinResult, setJoinResult] = useState<ActionResult | null>(null);
   const isSuperadmin = user?.globalRole === "superadmin";
 
   if (isLoading) {
@@ -56,16 +63,25 @@ function FamiliesLobby() {
             type="button"
             disabled={joinFamily.isPending || !joinCode.trim()}
             onClick={() => {
-              setJoinMessage(null);
+              setJoinResult(null);
               joinFamily.mutate(
                 { code: joinCode.trim() },
                 {
                   onSuccess: (result) => {
                     setActiveFamily(result.familyId, result.role);
                     setJoinCode("");
-                    setJoinMessage(`Joined ${result.familyName}.`);
+                    setJoinResult({
+                      title: "Completed",
+                      message: `Joined ${result.familyName}.`,
+                      variant: "success",
+                    });
                   },
-                  onError: (err) => setJoinMessage((err as Error).message),
+                  onError: (err) =>
+                    setJoinResult({
+                      title: "Action Failed",
+                      message: (err as Error).message,
+                      variant: "error",
+                    }),
                 },
               );
             }}
@@ -74,7 +90,6 @@ function FamiliesLobby() {
             {joinFamily.isPending ? "Joining..." : "Join"}
           </button>
         </div>
-        {joinMessage && <p className="text-sm text-muted-foreground">{joinMessage}</p>}
       </div>
 
       {families.length === 0 ? (
@@ -123,6 +138,13 @@ function FamiliesLobby() {
           })}
         </div>
       )}
+      <ActionResultModal
+        open={!!joinResult}
+        title={joinResult?.title ?? ""}
+        message={joinResult?.message ?? ""}
+        variant={joinResult?.variant}
+        onClose={() => setJoinResult(null)}
+      />
     </div>
   );
 }

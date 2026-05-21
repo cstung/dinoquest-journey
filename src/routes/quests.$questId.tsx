@@ -9,12 +9,19 @@ import {
 } from "@/hooks/use-quests";
 import { ArrowLeft, Calendar, Award, Zap, Repeat, User } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import {
   getQuestCategoryLabel,
   getQuestCategoryOptionsWithFallback,
 } from "@/lib/quest-categories";
 
 export const Route = createFileRoute("/quests/$questId")({ component: QuestDetail });
+
+type ActionResult = {
+  title: string;
+  message: string;
+  variant: ActionResultVariant;
+};
 
 function QuestDetail() {
   const nav = useNavigate();
@@ -26,7 +33,7 @@ function QuestDetail() {
   const query = useQuestDetail(familyId, questIdNum);
   const updateMutation = useUpdateQuest(familyId, questIdNum);
   const deleteMutation = useDeleteQuest(familyId, questIdNum);
-  const [completeMessage, setCompleteMessage] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -78,18 +85,26 @@ function QuestDetail() {
   const canManage = role === "parent" || role === "superadmin";
 
   const onComplete = async () => {
-    setCompleteMessage(null);
+    setActionResult(null);
     try {
       await completeMutation.mutateAsync();
-      setCompleteMessage("Completion request sent. Waiting for parent approval.");
+      setActionResult({
+        title: "Pending Approval",
+        message: "Completion request sent. Waiting for parent approval.",
+        variant: "warning",
+      });
       await query.refetch();
     } catch (err) {
-      setCompleteMessage((err as Error).message);
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
   const onSave = async () => {
-    setCompleteMessage(null);
+    setActionResult(null);
     try {
       await updateMutation.mutateAsync({
         title,
@@ -104,19 +119,31 @@ function QuestDetail() {
       });
       await query.refetch();
       setEditMode(false);
-      setCompleteMessage("Quest updated.");
+      setActionResult({
+        title: "Updated",
+        message: "Quest updated.",
+        variant: "success",
+      });
     } catch (err) {
-      setCompleteMessage((err as Error).message);
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
   const onDelete = async () => {
-    setCompleteMessage(null);
+    setActionResult(null);
     try {
       await deleteMutation.mutateAsync();
       nav({ to: "/quests" });
     } catch (err) {
-      setCompleteMessage((err as Error).message);
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -340,9 +367,15 @@ function QuestDetail() {
               </button>
             </div>
           )}
-          {completeMessage && <p className="text-sm text-muted-foreground">{completeMessage}</p>}
         </aside>
       </div>
+      <ActionResultModal
+        open={!!actionResult}
+        title={actionResult?.title ?? ""}
+        message={actionResult?.message ?? ""}
+        variant={actionResult?.variant}
+        onClose={() => setActionResult(null)}
+      />
     </div>
   );
 }
