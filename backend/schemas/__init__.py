@@ -1,10 +1,6 @@
 from backend.schemas.activity import ActivityItemOut, ActivityPageOut
 from backend.schemas.dashboard import (
-    ActiveChallengeOut,
     BoostCreate,
-    ChallengeCreate,
-    ChallengeOut,
-    ChallengeParticipantOut,
     CommentCreate,
     CommentOut,
     CommentsOut,
@@ -63,11 +59,7 @@ from backend.schemas.video_test import (
 __all__ = [
     "ActivityItemOut",
     "ActivityPageOut",
-    "ActiveChallengeOut",
     "BoostCreate",
-    "ChallengeCreate",
-    "ChallengeOut",
-    "ChallengeParticipantOut",
     "CommentCreate",
     "CommentOut",
     "CommentsOut",

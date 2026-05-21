@@ -7,14 +7,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import and_, case, delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.dependencies import get_active_membership, require_parent
 from backend.models import (
     ActivityLog,
-    FamilyChallenge,
     FamilyMember,
     FamilyMoodCheckin,
     FamilyPin,
@@ -23,7 +22,6 @@ from backend.models import (
     FamilyWallPost,
     FamilyWallReaction,
     QuestAssignment,
-    RewardItem,
     TestAssignment,
     User,
     UserFamilyLevel,
@@ -31,11 +29,7 @@ from backend.models import (
 )
 from backend.realtime import emit_family_event
 from backend.schemas.dashboard import (
-    ActiveChallengeOut,
     BoostCreate,
-    ChallengeCreate,
-    ChallengeOut,
-    ChallengeParticipantOut,
     CommentCreate,
     CommentOut,
     CommentsOut,
@@ -58,7 +52,7 @@ from backend.schemas.dashboard import (
 
 router = APIRouter()
 
-POST_TYPES = {"activity", "shoutout", "photo", "boost", "challenge_result", "weekly_recap"}
+POST_TYPES = {"activity", "shoutout", "photo", "boost", "weekly_recap"}
 
 
 def _today() -> date:
@@ -609,190 +603,6 @@ async def remove_pin(
     await db.delete(pin)
     await db.commit()
     await _emit(parent_member.family_id, "pin_removed", {"pinId": pin_id})
-
-
-async def _challenge_participants(
-    db: AsyncSession,
-    challenge: FamilyChallenge,
-) -> list[ChallengeParticipantOut]:
-    rows = await db.execute(
-        select(FamilyMember, User)
-        .outerjoin(User, User.id == FamilyMember.user_id)
-        .where(FamilyMember.family_id == challenge.family_id, FamilyMember.role == "child")
-        .order_by(FamilyMember.joined_at.asc(), FamilyMember.user_id.asc())
-    )
-    participants: list[ChallengeParticipantOut] = []
-    for member, user in rows.all():
-        progress = 0
-        if challenge.goal_type == "quest_count":
-            progress = int(
-                (
-                    await db.execute(
-                        select(func.count(QuestAssignment.id)).where(
-                            QuestAssignment.family_id == challenge.family_id,
-                            QuestAssignment.user_id == member.user_id,
-                            QuestAssignment.status == "completed",
-                            QuestAssignment.completed_at >= challenge.created_at,
-                        )
-                    )
-                ).scalar_one()
-            )
-        elif challenge.goal_type == "xp_total":
-            progress = int(
-                (
-                    await db.execute(
-                        select(func.coalesce(func.sum(XpEvent.delta), 0)).where(
-                            XpEvent.family_id == challenge.family_id,
-                            XpEvent.user_id == member.user_id,
-                            XpEvent.created_at >= challenge.created_at,
-                        )
-                    )
-                ).scalar_one()
-            )
-        elif challenge.goal_type == "streak":
-            level = (
-                await db.execute(
-                    select(UserFamilyLevel).where(
-                        UserFamilyLevel.family_id == challenge.family_id,
-                        UserFamilyLevel.user_id == member.user_id,
-                    )
-                )
-            ).scalar_one_or_none()
-            progress = level.current_streak if level else 0
-        elif challenge.goal_type == "test_score":
-            progress = int(
-                (
-                    await db.execute(
-                        select(func.coalesce(func.max(TestAssignment.xp_earned), 0)).where(
-                            TestAssignment.family_id == challenge.family_id,
-                            TestAssignment.user_id == member.user_id,
-                            TestAssignment.completed_at >= challenge.created_at,
-                        )
-                    )
-                ).scalar_one()
-            )
-        participants.append(
-            ChallengeParticipantOut(
-                user_id=member.user_id,
-                nickname=_display_name(member, user),
-                progress=progress,
-                color=member.avatar_color or "#1CB0F6",
-            )
-        )
-    return participants
-
-
-async def _serialize_challenge(db: AsyncSession, challenge: FamilyChallenge) -> ChallengeOut:
-    reward_title = None
-    if challenge.prize_reward_id is not None:
-        reward = await db.get(RewardItem, challenge.prize_reward_id)
-        reward_title = reward.title if reward else None
-    return ChallengeOut(
-        id=challenge.id,
-        title=challenge.title,
-        description=challenge.description,
-        goal_type=challenge.goal_type,
-        goal_value=challenge.goal_value,
-        ends_at=challenge.ends_at,
-        prize_reward_title=reward_title,
-        participants=await _challenge_participants(db, challenge),
-    )
-
-
-@router.get("/{family_id}/challenges/active", response_model=ActiveChallengeOut)
-async def active_challenge(
-    membership: FamilyMember = Depends(get_active_membership),
-    db: AsyncSession = Depends(get_db),
-) -> ActiveChallengeOut:
-    challenge = (
-        await db.execute(
-            select(FamilyChallenge)
-            .where(FamilyChallenge.family_id == membership.family_id, FamilyChallenge.is_active.is_(True))
-            .order_by(FamilyChallenge.created_at.desc(), FamilyChallenge.id.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    return ActiveChallengeOut(challenge=await _serialize_challenge(db, challenge) if challenge else None)
-
-
-@router.post("/{family_id}/challenges", response_model=ChallengeOut, status_code=status.HTTP_201_CREATED)
-async def create_challenge(
-    body: ChallengeCreate,
-    parent_member: FamilyMember = Depends(require_parent),
-    db: AsyncSession = Depends(get_db),
-) -> ChallengeOut:
-    if body.prize_reward_id is not None:
-        reward = (
-            await db.execute(
-                select(RewardItem).where(
-                    RewardItem.id == body.prize_reward_id,
-                    RewardItem.family_id == parent_member.family_id,
-                    RewardItem.is_active.is_(True),
-                )
-            )
-        ).scalar_one_or_none()
-        if not reward:
-            raise HTTPException(status_code=404, detail="Reward not found")
-
-    now = datetime.now(timezone.utc)
-    existing = (
-        await db.execute(
-            select(FamilyChallenge).where(
-                FamilyChallenge.family_id == parent_member.family_id,
-                FamilyChallenge.is_active.is_(True),
-            )
-        )
-    ).scalars().all()
-    for challenge in existing:
-        challenge.is_active = False
-        challenge.ended_at = now
-
-    challenge = FamilyChallenge(
-        family_id=parent_member.family_id,
-        created_by_user_id=parent_member.user_id,
-        title=body.title,
-        description=body.description,
-        goal_type=body.goal_type,
-        goal_value=body.goal_value,
-        ends_at=body.ends_at,
-        prize_reward_id=body.prize_reward_id,
-        is_active=True,
-    )
-    db.add(challenge)
-    await db.commit()
-    await db.refresh(challenge)
-    serialized = await _serialize_challenge(db, challenge)
-    await _emit(parent_member.family_id, "challenge_updated", {"challengeId": challenge.id})
-    return serialized
-
-
-@router.delete("/{family_id}/challenges/{challenge_id}", status_code=status.HTTP_200_OK)
-async def end_challenge(
-    challenge_id: int,
-    parent_member: FamilyMember = Depends(require_parent),
-    db: AsyncSession = Depends(get_db),
-) -> None:
-    challenge = (
-        await db.execute(
-            select(FamilyChallenge).where(
-                FamilyChallenge.id == challenge_id,
-                FamilyChallenge.family_id == parent_member.family_id,
-                FamilyChallenge.is_active.is_(True),
-            )
-        )
-    ).scalar_one_or_none()
-    if not challenge:
-        raise HTTPException(status_code=404, detail="Challenge not found")
-    participants = await _challenge_participants(db, challenge)
-    winners = []
-    if participants:
-        max_progress = max(item.progress for item in participants)
-        winners = [item.nickname for item in participants if item.progress == max_progress]
-    challenge.is_active = False
-    challenge.ended_at = datetime.now(timezone.utc)
-    await db.commit()
-    await _emit(parent_member.family_id, "challenge_updated", {"challengeId": challenge.id})
-    await _emit(parent_member.family_id, "challenge_completed", {"title": challenge.title, "winnerNicknames": winners})
 
 
 @router.get("/{family_id}/dashboard/stats", response_model=DashboardStatsOut)

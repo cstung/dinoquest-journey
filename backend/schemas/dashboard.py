@@ -135,53 +135,6 @@ class PinsOut(APIModel):
     pins: list[PinOut]
 
 
-class ChallengeParticipantOut(APIModel):
-    user_id: int
-    nickname: str
-    progress: int
-    color: str
-
-
-class ChallengeOut(APIModel):
-    id: int
-    title: str
-    description: str | None
-    goal_type: str
-    goal_value: int
-    ends_at: datetime
-    prize_reward_title: str | None
-    participants: list[ChallengeParticipantOut]
-
-
-class ActiveChallengeOut(APIModel):
-    challenge: ChallengeOut | None
-
-
-class ChallengeCreate(APIModel):
-    title: str
-    description: str | None = None
-    goal_type: str
-    goal_value: int = Field(ge=1, le=1_000_000)
-    ends_at: datetime
-    prize_reward_id: int | None = None
-
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, value: str) -> str:
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError("Challenge title is required")
-        return cleaned[:80]
-
-    @field_validator("goal_type")
-    @classmethod
-    def validate_goal_type(cls, value: str) -> str:
-        goal_type = value.strip()
-        if goal_type not in {"quest_count", "xp_total", "streak", "test_score"}:
-            raise ValueError("Invalid goal type")
-        return goal_type
-
-
 class DashboardStatsOut(APIModel):
     quests_completed_this_week: int = 0
     family_xp_this_week: int = 0

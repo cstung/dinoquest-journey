@@ -1,0 +1,450 @@
+﻿[
+    {
+        "label":  "Angry face with horns",
+        "file":  "angry-face-with-horns.svg"
+    },
+    {
+        "label":  "Angry face",
+        "file":  "angry-face.svg"
+    },
+    {
+        "label":  "Anguished face",
+        "file":  "anguished-face.svg"
+    },
+    {
+        "label":  "Anxious face with sweat",
+        "file":  "anxious-face-with-sweat.svg"
+    },
+    {
+        "label":  "Astonished face",
+        "file":  "astonished-face.svg"
+    },
+    {
+        "label":  "Beaming face with smiling eyes",
+        "file":  "beaming-face-with-smiling-eyes.svg"
+    },
+    {
+        "label":  "Clown face",
+        "file":  "clown-face.svg"
+    },
+    {
+        "label":  "Cold face",
+        "file":  "cold-face.svg"
+    },
+    {
+        "label":  "Confounded face",
+        "file":  "confounded-face.svg"
+    },
+    {
+        "label":  "Confused face",
+        "file":  "confused-face.svg"
+    },
+    {
+        "label":  "Cowboy hat face",
+        "file":  "cowboy-hat-face.svg"
+    },
+    {
+        "label":  "Crying face",
+        "file":  "crying-face.svg"
+    },
+    {
+        "label":  "Disappointed face",
+        "file":  "disappointed-face.svg"
+    },
+    {
+        "label":  "Disguised face",
+        "file":  "disguised-face.svg"
+    },
+    {
+        "label":  "Dizzy face",
+        "file":  "dizzy-face.svg"
+    },
+    {
+        "label":  "Dotted line face",
+        "file":  "dotted-line-face.svg"
+    },
+    {
+        "label":  "Downcase face with sweat",
+        "file":  "downcase-face-with-sweat.svg"
+    },
+    {
+        "label":  "Drooling face",
+        "file":  "drooling-face.svg"
+    },
+    {
+        "label":  "Exploding head",
+        "file":  "exploding-head.svg"
+    },
+    {
+        "label":  "Expressionless face",
+        "file":  "expressionless-face.svg"
+    },
+    {
+        "label":  "Face blowing a kiss",
+        "file":  "face-blowing-a-kiss.svg"
+    },
+    {
+        "label":  "Face exhaling",
+        "file":  "face-exhaling.svg"
+    },
+    {
+        "label":  "Face holding back tears",
+        "file":  "face-holding-back-tears.svg"
+    },
+    {
+        "label":  "Face in clouds",
+        "file":  "face-in-clouds.svg"
+    },
+    {
+        "label":  "Face savoring food",
+        "file":  "face-savoring-food.svg"
+    },
+    {
+        "label":  "Face screaming in fear",
+        "file":  "face-screaming-in-fear.svg"
+    },
+    {
+        "label":  "Face vomiting",
+        "file":  "face-vomiting.svg"
+    },
+    {
+        "label":  "Face with diagonal mouth",
+        "file":  "face-with-diagonal-mouth.svg"
+    },
+    {
+        "label":  "Face with hand over mouth",
+        "file":  "face-with-hand-over-mouth.svg"
+    },
+    {
+        "label":  "Face with head bandage",
+        "file":  "face-with-head-bandage.svg"
+    },
+    {
+        "label":  "Face with medical mask",
+        "file":  "face-with-medical-mask.svg"
+    },
+    {
+        "label":  "Face with monocle",
+        "file":  "face-with-monocle.svg"
+    },
+    {
+        "label":  "Face with open eyes and hand over mouth",
+        "file":  "face-with-open-eyes-and-hand-over-mouth.svg"
+    },
+    {
+        "label":  "Face with open mouth",
+        "file":  "face-with-open-mouth.svg"
+    },
+    {
+        "label":  "Face with peeking eye",
+        "file":  "face-with-peeking-eye.svg"
+    },
+    {
+        "label":  "Face with raised eyebrow",
+        "file":  "face-with-raised-eyebrow.svg"
+    },
+    {
+        "label":  "Face with rolling eyes",
+        "file":  "face-with-rolling-eyes.svg"
+    },
+    {
+        "label":  "Face with spiral eyes",
+        "file":  "face-with-spiral-eyes.svg"
+    },
+    {
+        "label":  "Face with steam from nose",
+        "file":  "face-with-steam-from-nose.svg"
+    },
+    {
+        "label":  "Face with symbols on mouth",
+        "file":  "face-with-symbols-on-mouth.svg"
+    },
+    {
+        "label":  "Face with tears of joy",
+        "file":  "face-with-tears-of-joy.svg"
+    },
+    {
+        "label":  "Face with thermometer",
+        "file":  "face-with-thermometer.svg"
+    },
+    {
+        "label":  "Face with tongue",
+        "file":  "face-with-tongue.svg"
+    },
+    {
+        "label":  "Face without mouth",
+        "file":  "face-without-mouth.svg"
+    },
+    {
+        "label":  "Fearful face",
+        "file":  "fearful-face.svg"
+    },
+    {
+        "label":  "Flushed face",
+        "file":  "flushed-face.svg"
+    },
+    {
+        "label":  "Frowning face with open mouth",
+        "file":  "frowning-face-with-open-mouth.svg"
+    },
+    {
+        "label":  "Frowning face",
+        "file":  "frowning-face.svg"
+    },
+    {
+        "label":  "Grimacing face",
+        "file":  "grimacing-face.svg"
+    },
+    {
+        "label":  "Grinning face with big eyes",
+        "file":  "grinning-face-with-big-eyes.svg"
+    },
+    {
+        "label":  "Grinning face with smiling eyes",
+        "file":  "grinning-face-with-smiling-eyes.svg"
+    },
+    {
+        "label":  "Grinning face with sweat",
+        "file":  "grinning-face-with-sweat.svg"
+    },
+    {
+        "label":  "Grinning face",
+        "file":  "grinning-face.svg"
+    },
+    {
+        "label":  "Grinning squinting face",
+        "file":  "grinning-squinting-face.svg"
+    },
+    {
+        "label":  "Head shaking horizontally",
+        "file":  "head-shaking-horizontally.svg"
+    },
+    {
+        "label":  "Head shaking vertically",
+        "file":  "head-shaking-vertically.svg"
+    },
+    {
+        "label":  "Hot face",
+        "file":  "hot-face.svg"
+    },
+    {
+        "label":  "Hugging face",
+        "file":  "hugging-face.svg"
+    },
+    {
+        "label":  "Hushed face",
+        "file":  "hushed-face.svg"
+    },
+    {
+        "label":  "Kissing face with closed eyes",
+        "file":  "kissing-face-with-closed-eyes.svg"
+    },
+    {
+        "label":  "Kissing face with smiling eyes",
+        "file":  "kissing-face-with-smiling-eyes.svg"
+    },
+    {
+        "label":  "Kissing face",
+        "file":  "kissing-face.svg"
+    },
+    {
+        "label":  "Loudly crying face",
+        "file":  "loudly-crying-face.svg"
+    },
+    {
+        "label":  "Lying face",
+        "file":  "lying-face.svg"
+    },
+    {
+        "label":  "Melting face",
+        "file":  "melting-face.svg"
+    },
+    {
+        "label":  "Mewing face",
+        "file":  "mewing-face.svg"
+    },
+    {
+        "label":  "Money mouth face",
+        "file":  "money-mouth-face.svg"
+    },
+    {
+        "label":  "Nauseated face",
+        "file":  "nauseated-face.svg"
+    },
+    {
+        "label":  "Nerd face",
+        "file":  "nerd-face.svg"
+    },
+    {
+        "label":  "Neutral face",
+        "file":  "neutral-face.svg"
+    },
+    {
+        "label":  "Partying face",
+        "file":  "partying-face.svg"
+    },
+    {
+        "label":  "Pensive face",
+        "file":  "pensive-face.svg"
+    },
+    {
+        "label":  "Persevering face",
+        "file":  "persevering-face.svg"
+    },
+    {
+        "label":  "Pile of poo",
+        "file":  "pile-of-poo.svg"
+    },
+    {
+        "label":  "Pleading face",
+        "file":  "pleading-face.svg"
+    },
+    {
+        "label":  "Pouting face",
+        "file":  "pouting-face.svg"
+    },
+    {
+        "label":  "Relieved face",
+        "file":  "relieved-face.svg"
+    },
+    {
+        "label":  "Robot",
+        "file":  "robot.svg"
+    },
+    {
+        "label":  "Rolling on the floor laughing",
+        "file":  "rolling-on-the-floor-laughing.svg"
+    },
+    {
+        "label":  "Sad but relieved face",
+        "file":  "sad-but-relieved-face.svg"
+    },
+    {
+        "label":  "Saluting face",
+        "file":  "saluting-face.svg"
+    },
+    {
+        "label":  "Shaking face",
+        "file":  "shaking-face.svg"
+    },
+    {
+        "label":  "Shushing face",
+        "file":  "shushing-face.svg"
+    },
+    {
+        "label":  "Skull",
+        "file":  "skull.svg"
+    },
+    {
+        "label":  "Sleeping face",
+        "file":  "sleeping-face.svg"
+    },
+    {
+        "label":  "Sleepy face",
+        "file":  "sleepy-face.svg"
+    },
+    {
+        "label":  "Slightly frowning face",
+        "file":  "slightly-frowning-face.svg"
+    },
+    {
+        "label":  "Slightly smiling face",
+        "file":  "slightly-smiling-face.svg"
+    },
+    {
+        "label":  "Smiling face with halo",
+        "file":  "smiling-face-with-halo.svg"
+    },
+    {
+        "label":  "Smiling face with heart-eyes",
+        "file":  "smiling-face-with-heart-eyes.svg"
+    },
+    {
+        "label":  "Smiling face with hearts",
+        "file":  "smiling-face-with-hearts.svg"
+    },
+    {
+        "label":  "Smiling face with horns",
+        "file":  "smiling-face-with-horns.svg"
+    },
+    {
+        "label":  "Smiling face with smiling eyes",
+        "file":  "smiling-face-with-smiling-eyes.svg"
+    },
+    {
+        "label":  "Smiling face with sunglasses",
+        "file":  "smiling-face-with-sunglasses.svg"
+    },
+    {
+        "label":  "Smiling face with tear",
+        "file":  "smiling-face-with-tear.svg"
+    },
+    {
+        "label":  "Smiling face",
+        "file":  "smiling-face.svg"
+    },
+    {
+        "label":  "Smirking face",
+        "file":  "smirking-face.svg"
+    },
+    {
+        "label":  "Sneezing face",
+        "file":  "sneezing-face.svg"
+    },
+    {
+        "label":  "Squinting face with tongue",
+        "file":  "squinting-face-with-tongue.svg"
+    },
+    {
+        "label":  "Star-struck",
+        "file":  "star-struck.svg"
+    },
+    {
+        "label":  "Thinking face",
+        "file":  "thinking-face.svg"
+    },
+    {
+        "label":  "Tired face",
+        "file":  "tired-face.svg"
+    },
+    {
+        "label":  "Unamused face",
+        "file":  "unamused-face.svg"
+    },
+    {
+        "label":  "Upside-down face",
+        "file":  "upside-down-face.svg"
+    },
+    {
+        "label":  "Weary face",
+        "file":  "weary-face.svg"
+    },
+    {
+        "label":  "Winking face with tongue",
+        "file":  "winking-face-with-tongue.svg"
+    },
+    {
+        "label":  "Winking face",
+        "file":  "winking-face.svg"
+    },
+    {
+        "label":  "Woozy face",
+        "file":  "woozy-face.svg"
+    },
+    {
+        "label":  "Worried face",
+        "file":  "worried-face.svg"
+    },
+    {
+        "label":  "Yawning face",
+        "file":  "yawning-face.svg"
+    },
+    {
+        "label":  "Zany face",
+        "file":  "zany-face.svg"
+    },
+    {
+        "label":  "Zipper-mouth face",
+        "file":  "zipper-mouth-face.svg"
+    }
+]

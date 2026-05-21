@@ -1,6 +1,5 @@
 from backend.models.activity_log import ActivityLog
 from backend.models.dashboard import (
-    FamilyChallenge,
     FamilyMoodCheckin,
     FamilyPin,
     FamilyPinAcknowledgement,
@@ -30,7 +29,6 @@ __all__ = [
     "Achievement",
     "ActivityLog",
     "Family",
-    "FamilyChallenge",
     "FamilyInvite",
     "FamilyMember",
     "FamilyMoodCheckin",

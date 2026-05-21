@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import {
   Image as ImageIcon,
@@ -12,7 +12,6 @@ import {
   Pin,
   Send,
   Sparkles,
-  Trophy,
   Flame,
   Target,
   Star,
@@ -27,16 +26,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -56,12 +47,13 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
+import { MOOD_ICON_OPTIONS } from "@/lib/mood-icons";
 import { useAuthStore, useFamilyStore } from "@/store";
 
 export const Route = createFileRoute("/families_/$familyId/dashboard")({
   head: () => ({
     meta: [
-      { title: "Family Dashboard — DinoQuest" },
+      { title: "Family Yard — DinoQuest" },
       { name: "description", content: "The Rivera Squad's shared dashboard." },
     ],
   }),
@@ -72,16 +64,8 @@ export const Route = createFileRoute("/families_/$familyId/dashboard")({
 // Types & mock data
 // ============================================================
 
-type PostType = "activity" | "shoutout" | "photo" | "boost" | "challenge_result" | "weekly_recap";
+type PostType = "activity" | "shoutout" | "photo" | "boost" | "weekly_recap";
 const EMOJIS = ["🔥", "⭐", "💪", "🎉", "👏", "😮"] as const;
-const MOOD_EMOJIS = ["😊", "😐", "😔", "😤", "🤩"] as const;
-const MOOD_LABELS: Record<string, string> = {
-  "😊": "Happy",
-  "😐": "Neutral",
-  "😔": "Sad",
-  "😤": "Angry",
-  "🤩": "Excited",
-};
 const STICKERS = ["🦖", "🦕", "🥚", "🌋", "☄️", "🌴", "🪨", "🦴"];
 
 interface Reaction {
@@ -139,17 +123,6 @@ interface Pin {
   acknowledgements: { userId: number; nickname: string }[];
   totalMembers: number;
 }
-interface Challenge {
-  id: number;
-  title: string;
-  description: string | null;
-  goalType: "quest_count" | "xp_total" | "streak" | "test_score";
-  goalValue: number;
-  endsAt: string;
-  prizeRewardTitle: string | null;
-  participants: { userId: number; nickname: string; progress: number; color: string }[];
-}
-
 interface DashboardStats {
   questsCompletedThisWeek?: number;
   familyXpThisWeek?: number;
@@ -157,20 +130,6 @@ interface DashboardStats {
   testsTakenThisWeek?: number;
 }
 
-interface CreateChallengePayload {
-  title: string;
-  description: string | null;
-  goalType: Challenge["goalType"];
-  goalValue: number;
-  endsAt: string;
-  prizeRewardId: number | null;
-}
-
-interface RewardOption {
-  id: number;
-  title: string;
-  isActive: boolean;
-}
 interface FamilyDashboardFamily {
   name: string;
   motto?: string | null;
@@ -205,7 +164,6 @@ function FamilyDashboardPage() {
   const [pendingPosts, setPendingPosts] = useState<WallPost[]>([]);
   const [wsConnected, setWsConnected] = useState(true);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; caption: string } | null>(null);
-  const [winnerAnnouncement, setWinnerAnnouncement] = useState<{ title: string; winnerNicknames: string[] } | null>(null);
 
   useEffect(() => {
     openThreadsRef.current = openThreads;
@@ -250,14 +208,6 @@ function FamilyDashboardPage() {
   });
   const posts = feedData?.posts ?? [];
   const hasMore = feedData?.hasMore ?? false;
-
-  const { data: challengeData } = useQuery({
-    queryKey: ["challenge-active", familyId],
-    queryFn: () => apiRequest<{ challenge: Challenge | null }>(`/api/families/${familyId}/challenges/active`),
-    enabled: hasValidFamilyId && !!user,
-  });
-  const challenge = challengeData?.challenge ?? null;
-  const challengeLoading = challengeData === undefined;
 
   const { data: moodData, refetch: refetchMoods } = useQuery({
     queryKey: ["mood-today", familyId],
@@ -475,31 +425,6 @@ function FamilyDashboardPage() {
     onError: () => toast.error("Could not add pin."),
   });
 
-  const createChallengeMutation = useMutation({
-    mutationFn: (payload: CreateChallengePayload) =>
-      apiRequest<void>(`/api/families/${familyId}/challenges`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["challenge-active", familyId] });
-      toast.success("Challenge launched!");
-    },
-    onError: () => toast.error("Could not create challenge."),
-  });
-
-  const endChallengeMutation = useMutation({
-    mutationFn: (challengeId: number) =>
-      apiRequest<void>(`/api/families/${familyId}/challenges/${challengeId}`, {
-        method: "DELETE",
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["challenge-active", familyId] });
-      toast("Challenge ended");
-    },
-    onError: () => toast.error("Could not end challenge."),
-  });
-
   const newPostsCount = pendingPosts.length;
   const acceptPending = () => {
     setPosts((p) => [...pendingPosts.filter((post) => !p.some((existing) => existing.id === post.id)), ...p]);
@@ -685,20 +610,6 @@ function FamilyDashboardPage() {
             return;
           }
 
-          if (msg.event === "challenge_updated") {
-            queryClient.invalidateQueries({ queryKey: ["challenge-active", familyId] });
-            return;
-          }
-
-          if (msg.event === "challenge_completed") {
-            const { title, winnerNicknames } = msg.payload as {
-              title: string;
-              winnerNicknames: string[];
-            };
-            setWinnerAnnouncement({ title, winnerNicknames });
-            return;
-          }
-
           if (msg.event === "mood_checkin") {
             refetchMoods();
             return;
@@ -749,16 +660,19 @@ function FamilyDashboardPage() {
 
       <StatsSnapshot stats={stats ?? {}} />
 
+      <div className="grid lg:grid-cols-[1fr_360px] gap-4">
+        <MoodCheckin
+          myMood={myMood}
+          onSubmit={(m, shared) => {
+            moodMutation.mutate({ mood: m, shared });
+          }}
+        />
+        <FamilyMoodPanel members={members} moods={moods} />
+      </div>
+
       <div className="grid lg:grid-cols-[1fr_360px] gap-6">
         {/* LEFT — wall */}
         <div className="space-y-4 min-w-0">
-          <MoodCheckin
-            myMood={myMood}
-            onSubmit={(m, shared) => {
-              moodMutation.mutate({ mood: m, shared });
-            }}
-          />
-
           <ShoutoutComposer
             currentUser={memberById(currentUserId) ?? { id: currentUserId, nickname: "You", color: "#1CB0F6", role: "parent" }}
             members={members.filter((m) => m.id !== currentUserId)}
@@ -820,27 +734,6 @@ function FamilyDashboardPage() {
 
         {/* RIGHT — side rail */}
         <aside className="space-y-4">
-          {!challengeLoading && challenge && (
-            <ChallengeCard
-              familyId={familyId}
-              challenge={challenge}
-              isParent={isParent}
-              onEnd={(challengeId) => endChallengeMutation.mutate(challengeId)}
-              onCreateNew={(payload) => createChallengeMutation.mutate(payload)}
-            />
-          )}
-          {!challengeLoading && !challenge && isParent && (
-            <ChallengeCard
-              familyId={familyId}
-              challenge={null}
-              isParent
-              onEnd={() => {}}
-              onCreateNew={(payload) => createChallengeMutation.mutate(payload)}
-            />
-          )}
-
-          <FamilyMoodPanel members={members} moods={moods} />
-
           <Pinboard
             pins={pins}
             isParent={isParent}
@@ -853,14 +746,6 @@ function FamilyDashboardPage() {
       </div>
 
       {lightboxImage && <PhotoLightbox image={lightboxImage} onClose={() => setLightboxImage(null)} />}
-      {winnerAnnouncement && (
-        <ChallengeWinnerModal
-          open={!!winnerAnnouncement}
-          title={winnerAnnouncement.title}
-          winnerNicknames={winnerAnnouncement.winnerNicknames}
-          onClose={() => setWinnerAnnouncement(null)}
-        />
-      )}
     </div>
   );
 }
@@ -887,7 +772,7 @@ function DashboardHeader({ family }: { family: { name: string; motto: string; co
             🦖
           </div>
           <div>
-            <div className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Family Dashboard</div>
+            <div className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Family Yard</div>
             <h1 className="font-display font-black text-2xl md:text-3xl">{family.name}</h1>
             <div className="text-sm text-muted-foreground font-medium">{family.motto}</div>
           </div>
@@ -962,33 +847,47 @@ function StatsSnapshot({ stats }: { stats: DashboardStats }) {
 // ============================================================
 
 function MoodCheckin({ myMood, onSubmit }: { myMood: string | null; onSubmit: (m: string, shared: boolean) => void }) {
-  const [editing, setEditing] = useState(myMood == null);
+  const [editing, setEditing] = useState(!isMoodIconValue(myMood));
   const [shared, setShared] = useState(false);
+  const [choices, setChoices] = useState(() => MOOD_ICON_OPTIONS.slice(0, 5));
+
+  useEffect(() => {
+    setChoices(pickMoodIcons());
+  }, []);
+  useEffect(() => {
+    if (!isMoodIconValue(myMood)) setEditing(true);
+  }, [myMood]);
+
   const pick = (m: string) => {
     onSubmit(m, shared);
     setEditing(false);
   };
+  const shuffle = () => setChoices(pickMoodIcons());
+
   return (
-    <div className="rounded-2xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 flex items-center justify-between gap-3 flex-wrap"
+    <div className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 flex items-center justify-between gap-3 flex-wrap"
       style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}>
       {editing ? (
         <>
           <div className="font-display font-extrabold text-sm">How are you feeling today?</div>
           <div className="flex items-center gap-2 flex-wrap">
-            {MOOD_EMOJIS.map((m) => (
+            {choices.map((m) => (
               <button
-                key={m}
-                aria-label={MOOD_LABELS[m]}
-                onClick={() => pick(m)}
+                key={m.value}
+                aria-label={m.label}
+                onClick={() => pick(m.value)}
                 className={cn(
-                  "size-11 rounded-2xl grid place-items-center text-2xl bg-secondary/60 hover:scale-110 transition shadow-pop-sm border-2",
-                  myMood === m ? "border-primary bg-primary/15" : "border-foreground/5",
+                  "size-12 rounded-2xl grid place-items-center bg-secondary/60 hover:scale-110 transition shadow-pop-sm border-2 p-1.5",
+                  myMood === m.value ? "border-primary bg-primary/15" : "border-foreground/5",
                 )}
                 style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}
               >
-                {m}
+                <MoodIcon value={m.value} label={m.label} sizeClass="size-8" />
               </button>
             ))}
+            <Button type="button" variant="secondary" size="sm" onClick={shuffle} className="rounded-xl font-bold">
+              Next
+            </Button>
             <label className="flex items-center gap-1.5 text-xs font-bold ml-1 cursor-pointer">
               <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} className="size-4" />
               Share
@@ -997,8 +896,8 @@ function MoodCheckin({ myMood, onSubmit }: { myMood: string | null; onSubmit: (m
         </>
       ) : (
         <>
-          <div className="font-display font-extrabold text-sm">
-            You're feeling <span className="text-2xl align-middle">{myMood}</span> today
+          <div className="font-display font-extrabold text-sm flex items-center gap-2">
+            You're feeling <MoodIcon value={myMood} label={moodIconLabel(myMood)} sizeClass="size-9" /> today
           </div>
           <button onClick={() => setEditing(true)} className="text-xs font-bold text-primary-dark hover:underline">
             Change
@@ -1020,15 +919,15 @@ function FamilyMoodPanel({
     <div className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 space-y-3"
       style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}>
       <h3 className="font-display font-extrabold text-sm uppercase tracking-wide flex items-center gap-2">
-        <Smile className="size-4" /> Family vibes today
+        Family vibes today
       </h3>
       <div className="grid grid-cols-5 gap-2">
         {members.map((m) => (
           <div key={m.id} className="flex flex-col items-center gap-1.5">
             <div className="relative">
               <Avatar nickname={m.nickname} color={m.color} size={44} />
-              <span className="absolute -bottom-1 -right-1 bg-card rounded-full size-6 grid place-items-center text-base border-2 border-card shadow-pop-sm">
-                {moods[m.id] ?? "❓"}
+              <span className="absolute -bottom-1 -right-1 bg-card rounded-full size-7 grid place-items-center border-2 border-card shadow-pop-sm p-0.5">
+                {isMoodIconValue(moods[m.id]) ? <MoodIcon value={moods[m.id]} label={moodIconLabel(moods[m.id])} sizeClass="size-5" /> : "?"}
               </span>
             </div>
             <div className="text-[10px] font-extrabold uppercase truncate w-full text-center">{m.nickname}</div>
@@ -1037,6 +936,23 @@ function FamilyMoodPanel({
       </div>
     </div>
   );
+}
+
+function pickMoodIcons() {
+  return [...MOOD_ICON_OPTIONS].sort(() => Math.random() - 0.5).slice(0, 5);
+}
+
+function moodIconLabel(value: string | null) {
+  return MOOD_ICON_OPTIONS.find((icon) => icon.value === value)?.label ?? "Mood";
+}
+
+function isMoodIconValue(value: string | null): value is string {
+  return typeof value === "string" && value.startsWith("/mood-icons/");
+}
+
+function MoodIcon({ value, label, sizeClass }: { value: string | null; label: string; sizeClass: string }) {
+  if (!isMoodIconValue(value)) return null;
+  return <img src={value} alt={label} className={cn(sizeClass, "object-contain")} draggable={false} />;
 }
 
 // ============================================================
@@ -1259,7 +1175,6 @@ const BADGE_META: Record<PostType, { label: string; cls: string } | null> = {
   shoutout: { label: "✍️ Shoutout", cls: "bg-info/15 text-info border-info/30" },
   photo: { label: "📷 Photo", cls: "bg-purple/15 text-purple border-purple/30" },
   boost: { label: "⚡ Boost", cls: "bg-warning/20 text-warning-foreground border-warning/40" },
-  challenge_result: { label: "🏆 Challenge", cls: "bg-success/15 text-success-foreground border-success/30" },
   weekly_recap: { label: "📊 Weekly Recap", cls: "bg-pink/15 text-pink border-pink/30" },
 };
 
@@ -1637,279 +1552,6 @@ function BoostButton({
         </div>
       </PopoverContent>
     </Popover>
-  );
-}
-
-// ============================================================
-// Challenge
-// ============================================================
-
-function useCountdown(iso: string) {
-  const [, force] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => force((x) => x + 1), 60_000);
-    return () => clearInterval(t);
-  }, []);
-  const ms = Math.max(0, new Date(iso).getTime() - Date.now());
-  const d = Math.floor(ms / 86_400_000);
-  const h = Math.floor((ms % 86_400_000) / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  return `${d}d ${h}h ${m}m`;
-}
-
-function goalText(c: Challenge) {
-  switch (c.goalType) {
-    case "quest_count": return `Complete ${c.goalValue} quests`;
-    case "xp_total": return `Earn ${c.goalValue} XP`;
-    case "streak": return `Maintain a ${c.goalValue}-day streak`;
-    case "test_score": return `Score ${c.goalValue}% or above on a test`;
-  }
-}
-
-function ChallengeCard({
-  familyId, challenge, isParent, onEnd, onCreateNew,
-}: {
-  familyId: number;
-  challenge: Challenge | null;
-  isParent: boolean;
-  onEnd: (challengeId: number) => void;
-  onCreateNew: (payload: CreateChallengePayload) => void;
-}) {
-  const [creating, setCreating] = useState(false);
-  const [confirmEnd, setConfirmEnd] = useState(false);
-  const countdown = useCountdown(challenge?.endsAt ?? new Date().toISOString());
-  const sorted = useMemo(
-    () => (challenge ? [...challenge.participants].sort((a, b) => b.progress - a.progress) : []),
-    [challenge],
-  );
-
-  return (
-    <div className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-5 space-y-4"
-      style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}>
-      <div className="flex items-center justify-between">
-        <h3 className="font-display font-extrabold uppercase tracking-wide text-sm flex items-center gap-2">
-          <Trophy className="size-4 text-warning-foreground" /> Family Challenge
-        </h3>
-        {isParent && (
-          <Button size="sm" variant="ghost" className="text-xs" onClick={() => setCreating(true)}>
-            <Plus className="size-3.5" /> {challenge ? "New" : "Create"}
-          </Button>
-        )}
-      </div>
-
-      {!challenge ? (
-        <div className="text-center py-6 text-sm text-muted-foreground">No active challenge.</div>
-      ) : (
-        <>
-          <div>
-            <div className="font-display font-black text-xl">{challenge.title}</div>
-            {challenge.description && <div className="text-sm text-muted-foreground">{challenge.description}</div>}
-            <div className="mt-2 inline-flex items-center gap-1 text-xs font-extrabold rounded-full bg-secondary/70 px-2 py-1">
-              🎯 {goalText(challenge)}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-muted-foreground" aria-live="polite">Ends in {countdown}</span>
-            {challenge.prizeRewardTitle && (
-              <span className="font-bold text-warning-foreground">🏆 {challenge.prizeRewardTitle}</span>
-            )}
-          </div>
-
-          <ul className="space-y-2">
-            {sorted.map((p, i) => {
-              const pct = Math.min(100, (p.progress / challenge.goalValue) * 100);
-              return (
-                <li key={p.userId} className="space-y-1">
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="font-black tabular-nums w-5">#{i + 1}</span>
-                    <Avatar nickname={p.nickname} color={p.color} size={22} />
-                    <span className="font-extrabold flex-1 truncate">{p.nickname}</span>
-                    <span className="font-bold tabular-nums">{p.progress}/{challenge.goalValue}</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-primary to-primary-dark transition-all"
-                      style={{ width: `${pct}%` }} />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-
-          {isParent && (
-            <Button variant="ghost" size="sm" className="w-full text-destructive" onClick={() => setConfirmEnd(true)}>
-              End challenge early
-            </Button>
-          )}
-        </>
-      )}
-
-      <CreateChallengeModal
-        familyId={familyId}
-        open={creating}
-        onOpenChange={setCreating}
-        hasActive={!!challenge}
-        onCreate={(payload) => {
-          onCreateNew(payload);
-          setCreating(false);
-        }}
-      />
-
-      <AlertDialog open={confirmEnd} onOpenChange={setConfirmEnd}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>End challenge now?</AlertDialogTitle>
-            <AlertDialogDescription>Current progress will be frozen.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep going</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setConfirmEnd(false); if (challenge) onEnd(challenge.id); }}
-              className="bg-destructive text-destructive-foreground">
-              End it
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
-}
-
-function CreateChallengeModal({
-  familyId, open, onOpenChange, hasActive, onCreate,
-}: {
-  familyId: number;
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  hasActive: boolean;
-  onCreate: (payload: CreateChallengePayload) => void;
-}) {
-  const [title, setTitle] = useState("");
-  const [desc, setDesc] = useState("");
-  const [goalType, setGoalType] = useState<Challenge["goalType"]>("quest_count");
-  const [goalValue, setGoalValue] = useState(10);
-  const [endsAt, setEndsAt] = useState("");
-  const [prizeRewardId, setPrizeRewardId] = useState<string>("none");
-
-  const { data: rewards } = useQuery({
-    queryKey: ["challenge-rewards", familyId],
-    queryFn: () => apiRequest<RewardOption[]>(`/api/families/${familyId}/rewards`),
-    enabled: Number.isFinite(familyId) && familyId > 0,
-  });
-  const activeRewards = (rewards ?? []).filter((r) => r.isActive);
-
-  const submit = () => {
-    if (!title.trim() || !endsAt) return;
-    onCreate({
-      title: title.trim(),
-      description: desc.trim() || null,
-      goalType,
-      goalValue,
-      endsAt: new Date(endsAt).toISOString(),
-      prizeRewardId: prizeRewardId === "none" ? null : Number(prizeRewardId),
-    });
-    setTitle("");
-    setDesc("");
-    setGoalValue(10);
-    setEndsAt("");
-    setPrizeRewardId("none");
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-3xl">
-        <DialogHeader>
-          <DialogTitle className="font-display font-black text-2xl">New family challenge</DialogTitle>
-          <DialogDescription>Set a goal and rally the squad.</DialogDescription>
-        </DialogHeader>
-        {hasActive && (
-          <div className="rounded-xl bg-warning/15 border-2 border-warning/30 p-3 text-xs font-bold">
-            A challenge is already running. Creating a new one will end the current one.
-          </div>
-        )}
-        <div className="space-y-3">
-          <div>
-            <Label>Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value.slice(0, 60))} maxLength={60} />
-          </div>
-          <div>
-            <Label>Description</Label>
-            <Textarea rows={2} value={desc} onChange={(e) => setDesc(e.target.value.slice(0, 200))} maxLength={200} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Goal type</Label>
-              <Select value={goalType} onValueChange={(v) => setGoalType(v as any)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="quest_count">Quest count</SelectItem>
-                  <SelectItem value="xp_total">XP total</SelectItem>
-                  <SelectItem value="streak">Streak days</SelectItem>
-                  <SelectItem value="test_score">Test score</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Goal value</Label>
-              <Input type="number" min={1} value={goalValue} onChange={(e) => setGoalValue(Math.max(1, Number(e.target.value)))} />
-            </div>
-          </div>
-          <div>
-            <Label>Ends at</Label>
-            <Input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
-          </div>
-          <div>
-            <Label>Prize (optional)</Label>
-            <Select value={prizeRewardId} onValueChange={setPrizeRewardId}>
-              <SelectTrigger>
-                <SelectValue placeholder="No prize" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No prize</SelectItem>
-                {activeRewards.map((reward) => (
-                  <SelectItem key={reward.id} value={String(reward.id)}>
-                    {reward.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={submit} disabled={!title.trim() || !endsAt} className="rounded-xl font-display font-extrabold uppercase">
-            Launch
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ChallengeWinnerModal({
-  open,
-  title,
-  winnerNicknames,
-  onClose,
-}: {
-  open: boolean;
-  title: string;
-  winnerNicknames: string[];
-  onClose: () => void;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>🏆 Challenge Over!</DialogTitle>
-          <DialogDescription>
-            {winnerNicknames.join(" & ")} won &quot;{title}&quot;!
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button onClick={onClose}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

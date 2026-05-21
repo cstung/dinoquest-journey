@@ -51,7 +51,7 @@ class FamilyMoodCheckin(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     family_id: Mapped[int] = mapped_column(ForeignKey("families.id"), nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    mood: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    mood: Mapped[str | None] = mapped_column(String(255), nullable=True)
     shared: Mapped[bool] = mapped_column(nullable=False, default=False)
     checkin_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -81,20 +81,3 @@ class FamilyPinAcknowledgement(Base):
     pin_id: Mapped[int] = mapped_column(ForeignKey("family_pins.id"), nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-
-class FamilyChallenge(Base):
-    __tablename__ = "family_challenges"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    family_id: Mapped[int] = mapped_column(ForeignKey("families.id"), nullable=False, index=True)
-    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    title: Mapped[str] = mapped_column(String(80), nullable=False)
-    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    goal_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    goal_value: Mapped[int] = mapped_column(nullable=False)
-    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    prize_reward_id: Mapped[int | None] = mapped_column(ForeignKey("reward_items.id"), nullable=True)
-    is_active: Mapped[bool] = mapped_column(nullable=False, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
