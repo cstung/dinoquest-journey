@@ -295,6 +295,10 @@ function FamilyDashboardPage() {
     );
   };
 
+  const prependPostOnce = (post: WallPost) => {
+    setPosts((prev) => [post, ...prev.filter((p) => p.id !== post.id)]);
+  };
+
   const postMutation = useMutation({
     mutationFn: async ({ text, sticker, imageFile, tags, postType }: PostPayload) => {
       if (imageFile) {
@@ -318,7 +322,9 @@ function FamilyDashboardPage() {
         }),
       });
     },
-    onSuccess: () => {
+    onSuccess: (savedPost) => {
+      prependPostOnce(savedPost);
+      setPendingPosts((pending) => pending.filter((post) => post.id !== savedPost.id));
       queryClient.invalidateQueries({ queryKey: ["wall-feed", familyId] });
       toast.success("Posted!");
     },
@@ -370,7 +376,20 @@ function FamilyDashboardPage() {
     onSuccess: (saved, vars, ctx) => {
       setCommentsByPost((m) => ({
         ...m,
-        [vars.postId]: (m[vars.postId] ?? []).map((c) => (c.id === ctx?.optimisticId ? saved : c)),
+        [vars.postId]: (() => {
+          let replaced = false;
+          const next = (m[vars.postId] ?? []).map((c) => {
+            if (c.id === ctx?.optimisticId) {
+              replaced = true;
+              return saved;
+            }
+            return c;
+          });
+          const withSaved = replaced ? next : [...next, saved];
+          return withSaved.filter((comment, index, list) => (
+            list.findIndex((candidate) => candidate.id === comment.id) === index
+          ));
+        })(),
       }));
     },
     onError: (_, vars, ctx) => {
@@ -483,7 +502,7 @@ function FamilyDashboardPage() {
 
   const newPostsCount = pendingPosts.length;
   const acceptPending = () => {
-    setPosts((p) => [...pendingPosts, ...p]);
+    setPosts((p) => [...pendingPosts.filter((post) => !p.some((existing) => existing.id === post.id)), ...p]);
     setPendingPosts([]);
   };
 
@@ -604,7 +623,15 @@ function FamilyDashboardPage() {
           if (!msg?.event) return;
 
           if (msg.event === "wall_post_created" || msg.event === "weekly_recap_posted") {
-            setPendingPosts((p) => [...p, msg?.payload as WallPost]);
+            const post = msg.payload as WallPost;
+            if (post.authorId === currentUserId) {
+              prependPostOnce(post);
+              setPendingPosts((pending) => pending.filter((item) => item.id !== post.id));
+              return;
+            }
+            setPendingPosts((pending) => (
+              pending.some((item) => item.id === post.id) ? pending : [...pending, post]
+            ));
             return;
           }
 
@@ -636,15 +663,25 @@ function FamilyDashboardPage() {
 
           if (msg.event === "wall_comment_added") {
             const { postId, comment } = msg.payload as { postId: number; comment: Comment };
+            if (comment.authorId === currentUserId) {
+              return;
+            }
+            let shouldIncrement = true;
             if (openThreadsRef.current.has(postId)) {
               setCommentsByPost((m) => ({
                 ...m,
-                [postId]: [...(m[postId] ?? []), comment],
+                [postId]: (() => {
+                  const existing = m[postId] ?? [];
+                  shouldIncrement = !existing.some((item) => item.id === comment.id);
+                  return shouldIncrement ? [...existing, comment] : existing;
+                })(),
               }));
             }
-            setPosts((prev) =>
-              prev.map((p) => (p.id === postId ? { ...p, commentCount: p.commentCount + 1 } : p)),
-            );
+            if (shouldIncrement) {
+              setPosts((prev) =>
+                prev.map((p) => (p.id === postId ? { ...p, commentCount: p.commentCount + 1 } : p)),
+              );
+            }
             return;
           }
 
@@ -684,7 +721,7 @@ function FamilyDashboardPage() {
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
     };
-  }, [familyId, hasValidFamilyId, isAuthenticated, queryClient, refetchMoods, refetchPins]);
+  }, [currentUserId, familyId, hasValidFamilyId, isAuthenticated, queryClient, refetchMoods, refetchPins]);
 
   if (!hasValidFamilyId) {
     return (
