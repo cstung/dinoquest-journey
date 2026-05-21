@@ -5,6 +5,10 @@ import { cn } from "@/lib/utils";
 import { useFamilyStore } from "@/store";
 import { type QuestFrequency, useCreateQuest } from "@/hooks/use-quests";
 import { useFamilyMembers } from "@/hooks/use-families";
+import {
+  getQuestCategoryLabel,
+  getQuestCategoryOptionsWithFallback,
+} from "@/lib/quest-categories";
 
 export const Route = createFileRoute("/quests/new")({ component: NewQuest });
 
@@ -16,7 +20,7 @@ function NewQuest() {
   const membersQuery = useFamilyMembers(familyId);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("Daily");
+  const [category, setCategory] = useState("learning");
   const [difficulty, setDifficulty] = useState("Easy");
   const [xpReward, setXpReward] = useState(10);
   const [dueDate, setDueDate] = useState("");
@@ -48,7 +52,7 @@ function NewQuest() {
       const created = await createQuest.mutateAsync({
         title,
         description: description || null,
-        category,
+        category: normalizeQuestCategory(category),
         difficulty,
         thumbnailUrl,
         xpReward,
@@ -126,15 +130,16 @@ function NewQuest() {
         </Field>
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Category">
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
-              <option>Daily</option>
-              <option>Learning</option>
-              <option>Creative</option>
-              <option>Epic</option>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className={selectCls}>
+              {getQuestCategoryOptionsWithFallback(category).map((value) => (
+                <option key={value} value={value}>
+                  {getQuestCategoryLabel(value)}
+                </option>
+              ))}
             </select>
           </Field>
           <Field label="Difficulty">
-            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className={inputCls}>
+            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className={selectCls}>
               <option>Easy</option>
               <option>Medium</option>
               <option>Hard</option>
@@ -154,7 +159,7 @@ function NewQuest() {
             <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
           </Field>
           <Field label="Frequency">
-            <select value={frequency} onChange={(e) => setFrequency(e.target.value as QuestFrequency)} className={inputCls}>
+            <select value={frequency} onChange={(e) => setFrequency(e.target.value as QuestFrequency)} className={selectCls}>
               <option value="once">One time</option>
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
@@ -252,6 +257,11 @@ function isPastDateInput(value: string): boolean {
 }
 
 const inputCls = "w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary";
+const selectCls = `${inputCls} pr-10 disabled:opacity-60`;
+
+function normalizeQuestCategory(value: string): string {
+  return value.trim().toLowerCase() || "custom";
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

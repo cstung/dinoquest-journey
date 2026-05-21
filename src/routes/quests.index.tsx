@@ -10,14 +10,18 @@ import {
   type AssignedMember,
   type QuestItem,
 } from "@/hooks/use-quests";
+import { getQuestCategoryLabel } from "@/lib/quest-categories";
 
 export const Route = createFileRoute("/quests/")({ component: QuestsPage });
 
 const CATEGORY_COLORS: Record<string, string> = {
-  Daily: "bg-info/15 text-info",
-  Learning: "bg-primary/15 text-primary-dark",
-  Creative: "bg-purple/15 text-purple",
-  Epic: "bg-warning/15 text-warning",
+  learning: "bg-primary/15 text-primary-dark",
+  chore: "bg-warning/15 text-warning",
+  habit: "bg-info/15 text-info",
+  fitness: "bg-success/15 text-success-foreground",
+  creative: "bg-purple/15 text-purple",
+  social: "bg-pink/15 text-pink",
+  custom: "bg-secondary text-secondary-foreground",
 };
 
 type ParentApprovalItem = {
@@ -227,10 +231,10 @@ function QuestCard({
         <span
           className={cn(
             "text-xs font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-md",
-            CATEGORY_COLORS[quest.category] ?? "bg-secondary text-secondary-foreground",
+            CATEGORY_COLORS[quest.category.trim().toLowerCase()] ?? "bg-secondary text-secondary-foreground",
           )}
         >
-          {quest.category}
+          {getQuestCategoryLabel(quest.category)}
         </span>
         {quest.frequency !== "once" && (
           <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-secondary text-secondary-foreground">

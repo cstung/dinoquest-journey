@@ -7,6 +7,7 @@ import { useLeaderboard } from "@/hooks/use-leaderboard";
 import { usePets } from "@/hooks/use-pets";
 import { useQuests } from "@/hooks/use-quests";
 import { useTests } from "@/hooks/use-tests";
+import { getQuestCategoryLabel } from "@/lib/quest-categories";
 
 export const Route = createFileRoute("/")({ component: HomePage });
 
@@ -179,7 +180,7 @@ function HomePage() {
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-extrabold uppercase tracking-wide px-2 py-1 rounded-md bg-primary/15 text-primary-dark">
-                    {q.category}
+                    {getQuestCategoryLabel(q.category)}
                   </span>
                   <span className="text-xs font-extrabold text-warning">+{q.xpReward} XP</span>
                 </div>

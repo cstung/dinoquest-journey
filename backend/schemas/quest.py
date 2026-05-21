@@ -18,7 +18,7 @@ class QuestFrequency(str, Enum):
 class QuestCreate(APIModel):
     title: str
     description: str | None = None
-    category: str = "Daily"
+    category: str = "learning"
     difficulty: str = "Easy"
     thumbnail_url: str | None = None
     xp_reward: int = Field(default=10, ge=1, le=10000)

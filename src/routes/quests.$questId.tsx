@@ -9,6 +9,10 @@ import {
 } from "@/hooks/use-quests";
 import { ArrowLeft, Calendar, Award, Zap, Repeat, User } from "lucide-react";
 import { useEffect, useState } from "react";
+import {
+  getQuestCategoryLabel,
+  getQuestCategoryOptionsWithFallback,
+} from "@/lib/quest-categories";
 
 export const Route = createFileRoute("/quests/$questId")({ component: QuestDetail });
 
@@ -26,7 +30,7 @@ function QuestDetail() {
   const [editMode, setEditMode] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("Daily");
+  const [category, setCategory] = useState("learning");
   const [difficulty, setDifficulty] = useState("Easy");
   const [xpReward, setXpReward] = useState(10);
   const [dueDate, setDueDate] = useState("");
@@ -90,7 +94,7 @@ function QuestDetail() {
       await updateMutation.mutateAsync({
         title,
         description: description || null,
-        category,
+        category: normalizeQuestCategory(category),
         difficulty,
         xpReward,
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
@@ -128,7 +132,7 @@ function QuestDetail() {
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
           <span className="inline-block text-xs font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-md bg-primary/15 text-primary-dark">
-            {quest.category}
+            {getQuestCategoryLabel(quest.category)}
           </span>
           {editMode ? (
             <div className="rounded-2xl border-2 border-border bg-card p-4 space-y-3">
@@ -147,17 +151,18 @@ function QuestDetail() {
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+                  className={selectCls}
                 >
-                  <option>Daily</option>
-                  <option>Learning</option>
-                  <option>Creative</option>
-                  <option>Epic</option>
+                  {getQuestCategoryOptionsWithFallback(category).map((value) => (
+                    <option key={value} value={value}>
+                      {getQuestCategoryLabel(value)}
+                    </option>
+                  ))}
                 </select>
                 <select
                   value={difficulty}
                   onChange={(e) => setDifficulty(e.target.value)}
-                  className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+                  className={selectCls}
                 >
                   <option>Easy</option>
                   <option>Medium</option>
@@ -180,7 +185,7 @@ function QuestDetail() {
                 <select
                   value={frequency}
                   onChange={(e) => setFrequency(e.target.value as QuestFrequency)}
-                  className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
+                  className={selectCls}
                 >
                   <option value="once">One time</option>
                   <option value="daily">Daily</option>
@@ -340,6 +345,12 @@ function QuestDetail() {
       </div>
     </div>
   );
+}
+
+const selectCls = "rounded-xl border-2 border-border bg-background px-3 py-2 pr-10 font-bold disabled:opacity-60";
+
+function normalizeQuestCategory(value: string): string {
+  return value.trim().toLowerCase() || "custom";
 }
 
 
