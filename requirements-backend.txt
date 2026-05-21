@@ -11,3 +11,5 @@ python-multipart==0.0.12
 python-dotenv==1.0.1
 qrcode[pil]==7.4.2
 apscheduler>=3.10.0
+openai>=1.45.0
+youtube-transcript-api>=0.6.2

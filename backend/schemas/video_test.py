@@ -57,6 +57,29 @@ class TestPreviewOut(APIModel):
     questions: list[TestQuestionDraft]
 
 
+class TestRegenerateQuestionRequest(APIModel):
+    title: str
+    raw_transcript: str
+    existing_questions: list[str] = Field(default_factory=list)
+    target_question_text: str | None = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_regen_title(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Test title is required")
+        return cleaned
+
+    @field_validator("raw_transcript")
+    @classmethod
+    def validate_regen_transcript(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Transcript is required")
+        return cleaned
+
+
 class TestPublishRequest(APIModel):
     title: str
     youtube_url: str
@@ -136,6 +159,8 @@ class TestAttemptStartOut(APIModel):
     assignment_id: int
     attempt_id: int
     title: str
+    video_id: str
+    youtube_url: str
     question_count: int
     time_limit_sec: int
     max_xp: int
@@ -161,6 +186,32 @@ class TestSubmitOut(APIModel):
     xp_earned: int
     total_xp: int
     level: int
+
+
+class TestAttemptReviewQuestionOut(APIModel):
+    question_id: int
+    question_order: int
+    question_text: str
+    options: list[str]
+    selected_option: int | None
+    selected_label: str | None
+    correct_option: int
+    correct_label: str
+    explanation: str | None
+    is_correct: bool
+
+
+class TestAttemptReviewOut(APIModel):
+    test_id: int
+    attempt_id: int
+    title: str
+    submitted_at: datetime
+    score_raw: int
+    score_pct: float
+    xp_earned: int
+    max_xp: int
+    total_questions: int
+    questions: list[TestAttemptReviewQuestionOut]
 
 
 class TestReopenRequestIn(APIModel):

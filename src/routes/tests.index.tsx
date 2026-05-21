@@ -8,10 +8,7 @@ import {
   useReopenRequests,
   useResolveReopenRequest,
   useRequestReopen,
-  useStartTest,
-  useSubmitTest,
   useTests,
-  type TestAttemptStart,
   type TestListItem,
 } from "@/hooks/use-tests";
 
@@ -127,11 +124,7 @@ function TestCard({
   familyId: number;
   isParent: boolean;
 }) {
-  const [attempt, setAttempt] = useState<TestAttemptStart | null>(null);
-  const [answers, setAnswers] = useState<Record<number, number>>({});
   const [actionResult, setActionResult] = useState<ActionResult | null>(null);
-  const startMutation = useStartTest(familyId, test.id);
-  const submitMutation = useSubmitTest(familyId, test.id);
   const reopenMutation = useRequestReopen(familyId, test.id);
   const reopenRequestsQuery = useReopenRequests(
     familyId,
@@ -139,41 +132,6 @@ function TestCard({
     isParent && test.reopenPendingCount > 0,
   );
   const resolveReopenMutation = useResolveReopenRequest(familyId, test.id);
-
-  const openAttempt = async () => {
-    setActionResult(null);
-    try {
-      const data = await startMutation.mutateAsync();
-      const defaultAnswers: Record<number, number> = {};
-      for (const q of data.questions) defaultAnswers[q.id] = 0;
-      setAnswers(defaultAnswers);
-      setAttempt(data);
-    } catch (err) {
-      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
-    }
-  };
-
-  const submitAttempt = async () => {
-    if (!attempt) return;
-    setActionResult(null);
-    try {
-      const result = await submitMutation.mutateAsync({
-        attemptId: attempt.attemptId,
-        answers: attempt.questions.map((q) => ({
-          questionId: q.id,
-          selectedOption: answers[q.id] ?? 0,
-        })),
-      });
-      setAttempt(null);
-      setActionResult({
-        title: "Completed",
-        message: `Submitted: ${result.scorePct}% score, +${result.xpEarned} XP.`,
-        variant: "success",
-      });
-    } catch (err) {
-      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
-    }
-  };
 
   const requestReopen = async () => {
     setActionResult(null);
@@ -185,7 +143,11 @@ function TestCard({
         variant: "warning",
       });
     } catch (err) {
-      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -202,7 +164,11 @@ function TestCard({
         variant: decision === "approve" ? "success" : "warning",
       });
     } catch (err) {
-      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -233,7 +199,7 @@ function TestCard({
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <StatusBadge status={test.status} />
               <span className="text-[10px] font-bold uppercase text-muted-foreground">
-                Subtitles: {test.subtitleSource === "youtube_auto" ? "YouTube" : "Whisper AI"}
+                Subtitles: {subtitleSourceLabel(test.subtitleSource)}
               </span>
             </div>
             <h3 className="font-display font-extrabold text-lg leading-tight">{test.title}</h3>
@@ -276,13 +242,13 @@ function TestCard({
                       {reopenMutation.isPending ? "Sending..." : "Request Reopen"}
                     </button>
                   ) : (
-                    <button
-                      onClick={openAttempt}
-                      disabled={startMutation.isPending}
-                      className="rounded-xl bg-primary text-primary-foreground font-display font-extrabold uppercase text-xs px-3 py-2 btn-pop"
+                    <Link
+                      to="/tests/$testId/take"
+                      params={{ testId: String(test.id) }}
+                      className="rounded-xl bg-primary text-primary-foreground font-display font-extrabold uppercase text-xs px-3 py-2 btn-pop inline-flex items-center"
                     >
-                      {startMutation.isPending ? "Starting..." : "Start Test"}
-                    </button>
+                      Start Test
+                    </Link>
                   )}
                 </div>
               )}
@@ -332,50 +298,6 @@ function TestCard({
         </div>
       )}
 
-      {attempt && (
-        <div className="rounded-2xl border-2 border-border p-4 bg-background space-y-4">
-          <h4 className="font-display font-extrabold text-lg">Attempt: {attempt.title}</h4>
-          {attempt.questions.map((q) => (
-            <div key={q.id} className="space-y-2">
-              <p className="font-bold text-sm">
-                {q.questionOrder}. {q.questionText}
-              </p>
-              <div className="grid sm:grid-cols-2 gap-2">
-                {q.options.map((option, oi) => (
-                  <label
-                    key={oi}
-                    className="flex items-center gap-2 rounded-xl border-2 border-border px-3 py-2"
-                  >
-                    <input
-                      type="radio"
-                      name={`attempt-${attempt.attemptId}-q-${q.id}`}
-                      checked={answers[q.id] === oi}
-                      onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: oi }))}
-                      className="accent-primary"
-                    />
-                    <span className="text-sm font-bold">{option}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setAttempt(null)}
-              className="rounded-xl bg-secondary font-display font-extrabold uppercase text-xs px-3 py-2"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={submitAttempt}
-              disabled={submitMutation.isPending}
-              className="rounded-xl bg-primary text-primary-foreground font-display font-extrabold uppercase text-xs px-3 py-2 btn-pop"
-            >
-              {submitMutation.isPending ? "Submitting..." : "Submit Test"}
-            </button>
-          </div>
-        </div>
-      )}
       <ActionResultModal
         open={!!actionResult}
         title={actionResult?.title ?? ""}
@@ -410,4 +332,12 @@ function StatusBadge({ status }: { status: string }) {
       {label[status] ?? status}
     </span>
   );
+}
+
+function subtitleSourceLabel(source: string): string {
+  if (source === "youtube_manual") return "YouTube Manual";
+  if (source === "youtube_auto") return "YouTube Auto";
+  if (source === "youtube_translated") return "YouTube Translated";
+  if (source === "whisper") return "Whisper";
+  return "Fallback";
 }

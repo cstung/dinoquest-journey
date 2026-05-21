@@ -1,10 +1,15 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFamilyStore } from "@/store";
 import { useFamilyMembers } from "@/hooks/use-families";
-import { usePreviewTest, usePublishTest, type TestPreview } from "@/hooks/use-tests";
+import {
+  usePreviewTest,
+  usePublishTest,
+  useRegeneratePreviewQuestion,
+  type TestPreview,
+} from "@/hooks/use-tests";
 
 export const Route = createFileRoute("/tests/new")({ component: NewTestWizard });
 
@@ -26,10 +31,12 @@ function NewTestWizard() {
   const [maxXp, setMaxXp] = useState(100);
   const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
   const [questions, setQuestions] = useState<EditorQuestion[]>([]);
+  const [regeneratingQuestionId, setRegeneratingQuestionId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const membersQuery = useFamilyMembers(familyId);
   const previewMutation = usePreviewTest(familyId);
+  const regenerateMutation = useRegeneratePreviewQuestion(familyId);
   const publishMutation = usePublishTest(familyId);
   const childMembers = (membersQuery.data ?? []).filter((m) => m.role === "child");
 
@@ -49,7 +56,10 @@ function NewTestWizard() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <Link to="/tests" className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground">
+      <Link
+        to="/tests"
+        className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground"
+      >
         <ArrowLeft className="size-4" /> Back
       </Link>
       <h1 className="text-3xl">Create a Test</h1>
@@ -73,7 +83,11 @@ function NewTestWizard() {
             >
               {s === 1 ? "Import" : s === 2 ? "Review" : "Publish"}
             </span>
-            {i < 2 && <div className={cn("flex-1 h-1 mx-3 rounded-full", s < step ? "bg-info" : "bg-muted")} />}
+            {i < 2 && (
+              <div
+                className={cn("flex-1 h-1 mx-3 rounded-full", s < step ? "bg-info" : "bg-muted")}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -96,6 +110,7 @@ function NewTestWizard() {
                   correct: q.correctOption,
                 })),
               );
+              setRegeneratingQuestionId(null);
               setStep(2);
             } catch (err) {
               setError((err as Error).message);
@@ -107,8 +122,49 @@ function NewTestWizard() {
       {step === 2 && preview && (
         <Step2
           preview={preview}
+          title={title}
           questions={questions}
           setQuestions={setQuestions}
+          regeneratingQuestionId={regeneratingQuestionId}
+          error={error}
+          onRegenerate={async (questionId) => {
+            const target = questions.find((q) => q.id === questionId);
+            if (!target) return;
+            setError(null);
+            setRegeneratingQuestionId(questionId);
+            try {
+              const replacement = await regenerateMutation.mutateAsync({
+                title: title.trim() || preview.title,
+                rawTranscript: preview.rawTranscript,
+                existingQuestions: questions
+                  .filter((q) => q.id !== questionId)
+                  .map((q) => q.text)
+                  .filter((x) => x.trim().length > 0),
+                targetQuestionText: target.text,
+              });
+              setQuestions((prev) =>
+                prev.map((q) =>
+                  q.id === questionId
+                    ? {
+                        ...q,
+                        text: replacement.questionText,
+                        options: [
+                          replacement.options[0],
+                          replacement.options[1],
+                          replacement.options[2],
+                          replacement.options[3],
+                        ],
+                        correct: replacement.correctOption,
+                      }
+                    : q,
+                ),
+              );
+            } catch (err) {
+              setError((err as Error).message);
+            } finally {
+              setRegeneratingQuestionId(null);
+            }
+          }}
           onBack={() => setStep(1)}
           onNext={() => setStep(3)}
         />
@@ -164,7 +220,8 @@ function NewTestWizard() {
   );
 }
 
-const inputCls = "w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-info";
+const inputCls =
+  "w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-info";
 
 function Step1({
   onGenerate,
@@ -210,7 +267,11 @@ function Step1({
           "Generate Quiz"
         )}
       </button>
-      {loading && <p className="text-center text-sm text-muted-foreground">Fetching subtitles {"->"} Generating questions...</p>}
+      {loading && (
+        <p className="text-center text-sm text-muted-foreground">
+          Fetching subtitles {"->"} Generating questions...
+        </p>
+      )}
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
   );
@@ -218,14 +279,22 @@ function Step1({
 
 function Step2({
   preview,
+  title,
   questions,
   setQuestions,
+  regeneratingQuestionId,
+  error,
+  onRegenerate,
   onBack,
   onNext,
 }: {
   preview: TestPreview;
+  title: string;
   questions: EditorQuestion[];
   setQuestions: React.Dispatch<React.SetStateAction<EditorQuestion[]>>;
+  regeneratingQuestionId: number | null;
+  error: string | null;
+  onRegenerate: (questionId: number) => Promise<void>;
   onBack: () => void;
   onNext: () => void;
 }) {
@@ -233,13 +302,14 @@ function Step2({
     <div className="space-y-4">
       <div className="rounded-2xl bg-info/10 border-2 border-info/20 p-4 flex items-center justify-between">
         <div>
-          <p className="font-bold text-sm">{preview.title}</p>
+          <p className="font-bold text-sm">{title || preview.title}</p>
           <p className="text-xs text-muted-foreground">
             Transcript: ~{preview.transcriptWordCount.toLocaleString()} words · Source:{" "}
-            {preview.subtitleSource === "youtube_auto" ? "YouTube Auto" : "Whisper"}
+            {subtitleSourceLabel(preview.subtitleSource)}
           </p>
         </div>
       </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex items-center justify-between">
         <h3 className="font-display font-extrabold">Questions ({questions.length})</h3>
         <button
@@ -257,14 +327,38 @@ function Step2({
       {questions.map((q, qi) => (
         <div key={q.id} className="rounded-2xl bg-card border-2 border-border p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold uppercase text-muted-foreground">Question {qi + 1}</span>
-            <button onClick={() => setQuestions((prev) => prev.filter((x) => x.id !== q.id))} className="text-destructive">
-              <Trash2 className="size-4" />
-            </button>
+            <span className="text-xs font-extrabold uppercase text-muted-foreground">
+              Question {qi + 1}
+            </span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => void onRegenerate(q.id)}
+                disabled={regeneratingQuestionId === q.id}
+                className="text-info inline-flex items-center gap-1 text-xs font-bold disabled:opacity-60"
+                title="Regenerate this question"
+              >
+                {regeneratingQuestionId === q.id ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
+                Regenerate
+              </button>
+              <button
+                onClick={() => setQuestions((prev) => prev.filter((x) => x.id !== q.id))}
+                className="text-destructive"
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </div>
           </div>
           <input
             value={q.text}
-            onChange={(e) => setQuestions((prev) => prev.map((x) => (x.id === q.id ? { ...x, text: e.target.value } : x)))}
+            onChange={(e) =>
+              setQuestions((prev) =>
+                prev.map((x) => (x.id === q.id ? { ...x, text: e.target.value } : x)),
+              )
+            }
             className={inputCls}
           />
           <div className="grid sm:grid-cols-2 gap-2">
@@ -280,7 +374,11 @@ function Step2({
                   type="radio"
                   name={`q${q.id}`}
                   checked={q.correct === oi}
-                  onChange={() => setQuestions((prev) => prev.map((x) => (x.id === q.id ? { ...x, correct: oi } : x)))}
+                  onChange={() =>
+                    setQuestions((prev) =>
+                      prev.map((x) => (x.id === q.id ? { ...x, correct: oi } : x)),
+                    )
+                  }
                   className="accent-primary"
                 />
                 <input
@@ -303,10 +401,16 @@ function Step2({
         </div>
       ))}
       <div className="flex gap-3 pt-2">
-        <button onClick={onBack} className="rounded-2xl bg-secondary font-display font-extrabold uppercase px-6 py-3">
+        <button
+          onClick={onBack}
+          className="rounded-2xl bg-secondary font-display font-extrabold uppercase px-6 py-3"
+        >
           <ArrowLeft className="size-4 inline" /> Back
         </button>
-        <button onClick={onNext} className="flex-1 rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase py-3 shadow-pop-sm">
+        <button
+          onClick={onNext}
+          className="flex-1 rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase py-3 shadow-pop-sm"
+        >
           Next <ArrowRight className="size-4 inline" />
         </button>
       </div>
@@ -350,22 +454,37 @@ function Step3({
       </Field>
       <div className="grid sm:grid-cols-2 gap-4">
         <Field label="Time Limit (min)">
-          <input type="number" value={timeLimitMin} onChange={(e) => setTimeLimitMin(Number(e.target.value))} className={inputCls} />
+          <input
+            type="number"
+            value={timeLimitMin}
+            onChange={(e) => setTimeLimitMin(Number(e.target.value))}
+            className={inputCls}
+          />
         </Field>
         <Field label="Max XP Reward">
-          <input type="number" value={maxXp} onChange={(e) => setMaxXp(Number(e.target.value))} className={inputCls} />
+          <input
+            type="number"
+            value={maxXp}
+            onChange={(e) => setMaxXp(Number(e.target.value))}
+            className={inputCls}
+          />
         </Field>
       </div>
       <Field label="Assign to">
         <div className="grid grid-cols-3 gap-2">
           {childMembers.map((m) => (
-            <label key={m.userId} className="flex items-center gap-2 rounded-xl border-2 border-border px-3 py-2 cursor-pointer hover:border-info">
+            <label
+              key={m.userId}
+              className="flex items-center gap-2 rounded-xl border-2 border-border px-3 py-2 cursor-pointer hover:border-info"
+            >
               <input
                 type="checkbox"
                 checked={assignedUserIds.includes(m.userId)}
                 onChange={() =>
                   setAssignedUserIds((prev) =>
-                    prev.includes(m.userId) ? prev.filter((x) => x !== m.userId) : [...prev, m.userId],
+                    prev.includes(m.userId)
+                      ? prev.filter((x) => x !== m.userId)
+                      : [...prev, m.userId],
                   )
                 }
                 className="size-4 accent-primary"
@@ -377,7 +496,10 @@ function Step3({
       </Field>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-3 pt-2">
-        <button onClick={onBack} className="rounded-2xl bg-secondary font-display font-extrabold uppercase px-6 py-3">
+        <button
+          onClick={onBack}
+          className="rounded-2xl bg-secondary font-display font-extrabold uppercase px-6 py-3"
+        >
           <ArrowLeft className="size-4 inline" /> Back
         </button>
         <button
@@ -395,8 +517,18 @@ function Step3({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
       {children}
     </label>
   );
+}
+
+function subtitleSourceLabel(source: string): string {
+  if (source === "youtube_manual") return "YouTube Manual";
+  if (source === "youtube_auto") return "YouTube Auto";
+  if (source === "youtube_translated") return "YouTube Translated";
+  if (source === "whisper") return "Whisper";
+  return "Fallback";
 }

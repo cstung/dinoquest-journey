@@ -22,12 +22,16 @@ from backend.models import (
 )
 from backend.realtime import emit_family_event
 from backend.schemas.video_test import (
+    TestAttemptReviewOut,
+    TestAttemptReviewQuestionOut,
     TestAssignedMemberOut,
     TestAttemptStartOut,
     TestListItemOut,
     TestPageOut,
     TestPreviewOut,
     TestPreviewRequest,
+    TestQuestionDraft,
+    TestRegenerateQuestionRequest,
     TestPublishRequest,
     TestQuestionForAttemptOut,
     TestReopenRequestIn,
@@ -37,7 +41,10 @@ from backend.schemas.video_test import (
     TestSubmitOut,
     TestSubmitRequest,
 )
-from backend.services.quiz_generator import generate_quiz_questions
+from backend.services.quiz_generator import (
+    generate_quiz_questions,
+    generate_single_quiz_question,
+)
 from backend.services.subtitle_service import build_subtitle_payload
 from backend.services.xp_engine import award_xp
 
@@ -55,6 +62,13 @@ def _parse_cursor(cursor: str | None) -> datetime | None:
 
 def _option_label(index: int) -> str:
     return ("A", "B", "C", "D")[index]
+
+
+def _option_index(label: str) -> int:
+    try:
+        return {"A": 0, "B": 1, "C": 2, "D": 3}[label]
+    except KeyError as exc:
+        raise ValueError("Invalid option label") from exc
 
 
 async def _assignment_status_for_test(
@@ -184,7 +198,7 @@ async def preview_test(
 ) -> TestPreviewOut:
     del db
     subtitle = await build_subtitle_payload(body.youtube_url)
-    questions = generate_quiz_questions(
+    questions = await generate_quiz_questions(
         transcript=subtitle.raw_transcript,
         title=subtitle.title,
         question_count=body.question_count,
@@ -201,6 +215,22 @@ async def preview_test(
         transcript_preview=preview,
         raw_transcript=subtitle.raw_transcript,
         questions=questions,
+    )
+
+
+@router.post("/{family_id}/tests/preview/regenerate-question", response_model=TestQuestionDraft)
+async def regenerate_preview_question(
+    body: TestRegenerateQuestionRequest,
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> TestQuestionDraft:
+    del parent_member
+    del db
+    return await generate_single_quiz_question(
+        transcript=body.raw_transcript,
+        title=body.title,
+        existing_questions=body.existing_questions,
+        target_question_text=body.target_question_text,
     )
 
 
@@ -409,6 +439,8 @@ async def start_attempt(
         assignment_id=assignment.id,
         attempt_id=attempt.id,
         title=test.title,
+        video_id=test.video_id,
+        youtube_url=test.youtube_url,
         question_count=test.question_count,
         time_limit_sec=test.time_limit_sec,
         max_xp=test.max_xp,
@@ -461,8 +493,6 @@ async def submit_attempt(
         .order_by(TestQuestion.question_order.asc(), TestQuestion.id.asc())
     )
     questions = question_rows.scalars().all()
-    if len(body.answers) != len(questions):
-        raise HTTPException(status_code=400, detail="All questions must be answered")
 
     question_by_id = {question.id: question for question in questions}
     seen_question_ids: set[int] = set()
@@ -538,6 +568,83 @@ async def submit_attempt(
         xp_earned=xp_earned,
         total_xp=level_row.total_xp,
         level=level_row.level,
+    )
+
+
+@router.get(
+    "/{family_id}/tests/{test_id}/attempts/{attempt_id}/review",
+    response_model=TestAttemptReviewOut,
+)
+async def get_attempt_review(
+    test_id: int,
+    attempt_id: int,
+    current_user: User = Depends(get_current_user),
+    membership: FamilyMember = Depends(get_active_membership),
+    db: AsyncSession = Depends(get_db),
+) -> TestAttemptReviewOut:
+    test = await _validate_test_access(test_id=test_id, membership=membership, db=db)
+
+    row = await db.execute(
+        select(TestAttempt, TestAssignment)
+        .join(TestAssignment, TestAssignment.id == TestAttempt.assignment_id)
+        .where(
+            TestAttempt.id == attempt_id,
+            TestAssignment.test_id == test_id,
+            TestAssignment.family_id == membership.family_id,
+        )
+    )
+    result = row.one_or_none()
+    if not result:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+
+    attempt, assignment = result
+    if membership.role == "child" and assignment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only review your own attempts")
+    if attempt.submitted_at is None:
+        raise HTTPException(status_code=400, detail="Attempt has not been submitted")
+
+    answer_rows = await db.execute(
+        select(TestAttemptAnswer).where(TestAttemptAnswer.attempt_id == attempt.id)
+    )
+    answers = {answer.question_id: answer for answer in answer_rows.scalars().all()}
+
+    question_rows = await db.execute(
+        select(TestQuestion)
+        .where(TestQuestion.test_id == test.id)
+        .order_by(TestQuestion.question_order.asc(), TestQuestion.id.asc())
+    )
+    review_questions: list[TestAttemptReviewQuestionOut] = []
+    for question in question_rows.scalars().all():
+        answer = answers.get(question.id)
+        selected_label = answer.selected_option if answer else None
+        selected_option = _option_index(selected_label) if selected_label else None
+        correct_option = _option_index(question.correct_option)
+        review_questions.append(
+            TestAttemptReviewQuestionOut(
+                question_id=question.id,
+                question_order=question.question_order,
+                question_text=question.question_text,
+                options=[question.option_a, question.option_b, question.option_c, question.option_d],
+                selected_option=selected_option,
+                selected_label=selected_label,
+                correct_option=correct_option,
+                correct_label=question.correct_option,
+                explanation=question.explanation,
+                is_correct=answer.is_correct if answer else False,
+            )
+        )
+
+    return TestAttemptReviewOut(
+        test_id=test.id,
+        attempt_id=attempt.id,
+        title=test.title,
+        submitted_at=attempt.submitted_at,
+        score_raw=attempt.score_raw or 0,
+        score_pct=attempt.score_pct or 0.0,
+        xp_earned=attempt.xp_earned,
+        max_xp=test.max_xp,
+        total_questions=test.question_count,
+        questions=review_questions,
     )
 
 

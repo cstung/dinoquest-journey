@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
 
+export type TestSubtitleSource =
+  | "youtube_manual"
+  | "youtube_auto"
+  | "youtube_translated"
+  | "whisper"
+  | "fallback_local";
+
 export interface TestAssignedMember {
   userId: number;
   username: string;
@@ -21,7 +28,7 @@ export interface TestPreview {
   youtubeUrl: string;
   videoId: string;
   thumbnailUrl: string;
-  subtitleSource: "youtube_auto" | "whisper";
+  subtitleSource: TestSubtitleSource;
   transcriptWordCount: number;
   transcriptPreview: string;
   rawTranscript: string;
@@ -37,7 +44,7 @@ export interface TestListItem {
   timeLimitMin: number;
   maxXp: number;
   status: "draft" | "published" | "completed" | "reopen_requested";
-  subtitleSource: "youtube_auto" | "whisper";
+  subtitleSource: TestSubtitleSource;
   assignedMembers: TestAssignedMember[];
   reopenPendingCount: number;
   createdAt: string;
@@ -61,6 +68,8 @@ export interface TestAttemptStart {
   assignmentId: number;
   attemptId: number;
   title: string;
+  videoId: string;
+  youtubeUrl: string;
   questionCount: number;
   timeLimitSec: number;
   maxXp: number;
@@ -76,6 +85,32 @@ export interface TestSubmitResult {
   xpEarned: number;
   totalXp: number;
   level: number;
+}
+
+export interface TestAttemptReviewQuestion {
+  questionId: number;
+  questionOrder: number;
+  questionText: string;
+  options: [string, string, string, string];
+  selectedOption: number | null;
+  selectedLabel: string | null;
+  correctOption: number;
+  correctLabel: string;
+  explanation: string | null;
+  isCorrect: boolean;
+}
+
+export interface TestAttemptReview {
+  testId: number;
+  attemptId: number;
+  title: string;
+  submittedAt: string;
+  scoreRaw: number;
+  scorePct: number;
+  xpEarned: number;
+  maxXp: number;
+  totalQuestions: number;
+  questions: TestAttemptReviewQuestion[];
 }
 
 export interface TestReopenRequestItem {
@@ -128,6 +163,21 @@ export function usePreviewTest(familyId: number | null) {
   });
 }
 
+export function useRegeneratePreviewQuestion(familyId: number | null) {
+  return useMutation({
+    mutationFn: (body: {
+      title: string;
+      rawTranscript: string;
+      existingQuestions: string[];
+      targetQuestionText?: string | null;
+    }) =>
+      apiRequest<TestQuestionDraft>(`/api/families/${familyId}/tests/preview/regenerate-question`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
 export function usePublishTest(familyId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -136,7 +186,7 @@ export function usePublishTest(familyId: number | null) {
       youtubeUrl: string;
       videoId: string;
       thumbnailUrl: string | null;
-      subtitleSource: "youtube_auto" | "whisper";
+      subtitleSource: TestSubtitleSource;
       rawTranscript: string;
       questionCount: number;
       timeLimitMin: number;
@@ -228,5 +278,21 @@ export function useResolveReopenRequest(familyId: number | null, testId: number 
       queryClient.invalidateQueries({ queryKey: ["test-reopen-requests", familyId, testId] });
       queryClient.invalidateQueries({ queryKey: ["leaderboard", familyId] });
     },
+  });
+}
+
+export function useAttemptReview(
+  familyId: number | null,
+  testId: number | null,
+  attemptId: number | null,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["test-attempt-review", familyId, testId, attemptId],
+    queryFn: () =>
+      apiRequest<TestAttemptReview>(
+        `/api/families/${familyId}/tests/${testId}/attempts/${attemptId}/review`,
+      ),
+    enabled: !!familyId && !!testId && !!attemptId && enabled,
   });
 }
