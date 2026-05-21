@@ -124,6 +124,13 @@ interface Member {
   color: string;
   role: "parent" | "child" | "superadmin";
 }
+interface ApiMember {
+  userId: number;
+  username: string;
+  role: "parent" | "child" | "superadmin";
+  nickname: string | null;
+  avatarColor: string | null;
+}
 interface Pin {
   id: number;
   message: string;
@@ -164,6 +171,12 @@ interface RewardOption {
   title: string;
   isActive: boolean;
 }
+interface FamilyDashboardFamily {
+  name: string;
+  motto?: string | null;
+  colorHex: string;
+  myRole?: "parent" | "child" | "superadmin";
+}
 
 interface PostPayload {
   text: string;
@@ -178,12 +191,13 @@ interface PostPayload {
 
 function FamilyDashboardPage() {
   const queryClient = useQueryClient();
-  const { user, isAuthenticated } = useAuthStore();
-  const { activeFamilyId, activeFamilyRole } = useFamilyStore();
-  const familyId = activeFamilyId;
-  const isParent = activeFamilyRole === "parent" || activeFamilyRole === "superadmin";
+  const user = useAuthStore((s) => s.user);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { familyId: familyIdParam } = Route.useParams();
+  const { activeFamilyRole } = useFamilyStore();
+  const familyId = Number(familyIdParam);
+  const hasValidFamilyId = Number.isFinite(familyId) && familyId > 0;
   const currentUserId = user?.id ?? 0;
-
   const [page, setPage] = useState(1);
   const [commentsByPost, setCommentsByPost] = useState<Record<number, Comment[]>>({});
   const [openThreads, setOpenThreads] = useState<Set<number>>(new Set());
@@ -197,33 +211,31 @@ function FamilyDashboardPage() {
     openThreadsRef.current = openThreads;
   }, [openThreads]);
 
-  if (!familyId) {
-    return (
-      <div className="max-w-md mx-auto mt-20 text-center space-y-4 p-4">
-        <div className="text-6xl">👨‍👩‍👧‍👦</div>
-        <h1 className="font-display font-extrabold text-2xl">Select a family</h1>
-        <p className="text-muted-foreground">Pick a family to view its dashboard.</p>
-        <Button asChild><Link to="/families">Choose family</Link></Button>
-      </div>
-    );
-  }
-
   const { data: familyData } = useQuery({
     queryKey: ["family", familyId],
     queryFn: () =>
-      apiRequest<{ name: string; motto?: string | null; colorHex: string }>(`/api/families/${familyId}`),
-    enabled: !!familyId,
+      apiRequest<FamilyDashboardFamily>(`/api/families/${familyId}`),
+    enabled: hasValidFamilyId && !!user,
   });
   const family = familyData
     ? { ...familyData, motto: familyData.motto ?? "" }
     : { name: "", motto: "", colorHex: "#58CC02" };
+  const familyRole = familyData?.myRole ?? activeFamilyRole;
+  const isParent = familyRole === "parent" || familyRole === "superadmin";
 
   const { data: membersData } = useQuery({
     queryKey: ["family-members", familyId],
-    queryFn: () => apiRequest<{ members: Member[] }>(`/api/families/${familyId}/members`),
-    enabled: !!familyId,
+    queryFn: () => apiRequest<ApiMember[] | { members: Member[] }>(`/api/families/${familyId}/members`),
+    enabled: hasValidFamilyId && !!user,
   });
-  const members = membersData?.members ?? [];
+  const members: Member[] = Array.isArray(membersData)
+    ? membersData.map((member) => ({
+        id: member.userId,
+        nickname: member.nickname ?? member.username,
+        color: member.avatarColor ?? "#1CB0F6",
+        role: member.role,
+      }))
+    : (membersData?.members ?? []);
 
   const memberById = (id: number | null) =>
     id == null ? null : members.find((m) => m.id === id) ?? null;
@@ -234,7 +246,7 @@ function FamilyDashboardPage() {
       apiRequest<{ posts: WallPost[]; hasMore: boolean }>(
         `/api/families/${familyId}/dashboard/feed?page=${page}&limit=20`,
       ),
-    enabled: !!familyId,
+    enabled: hasValidFamilyId && !!user,
   });
   const posts = feedData?.posts ?? [];
   const hasMore = feedData?.hasMore ?? false;
@@ -242,7 +254,7 @@ function FamilyDashboardPage() {
   const { data: challengeData } = useQuery({
     queryKey: ["challenge-active", familyId],
     queryFn: () => apiRequest<{ challenge: Challenge | null }>(`/api/families/${familyId}/challenges/active`),
-    enabled: !!familyId,
+    enabled: hasValidFamilyId && !!user,
   });
   const challenge = challengeData?.challenge ?? null;
   const challengeLoading = challengeData === undefined;
@@ -253,7 +265,7 @@ function FamilyDashboardPage() {
       apiRequest<{ checkins: { userId: number; mood: string | null }[] }>(
         `/api/families/${familyId}/mood-checkins/today`,
       ),
-    enabled: !!familyId,
+    enabled: hasValidFamilyId && !!user,
   });
   const moods: Record<number, string | null> = Object.fromEntries(
     (moodData?.checkins ?? []).map((c) => [c.userId, c.mood]),
@@ -263,14 +275,14 @@ function FamilyDashboardPage() {
   const { data: pinsData, refetch: refetchPins } = useQuery({
     queryKey: ["pins", familyId],
     queryFn: () => apiRequest<{ pins: Pin[] }>(`/api/families/${familyId}/pins`),
-    enabled: !!familyId,
+    enabled: hasValidFamilyId && !!user,
   });
   const pins = pinsData?.pins ?? [];
 
   const { data: stats } = useQuery({
     queryKey: ["dashboard-stats", familyId],
     queryFn: () => apiRequest<DashboardStats>(`/api/families/${familyId}/dashboard/stats`),
-    enabled: !!familyId,
+    enabled: hasValidFamilyId && !!user,
   });
 
   const setPosts = (updater: (prev: WallPost[]) => WallPost[]) => {
@@ -552,7 +564,7 @@ function FamilyDashboardPage() {
   };
 
   useEffect(() => {
-    if (!familyId || !isAuthenticated) return;
+    if (!hasValidFamilyId || !isAuthenticated) return;
     let ws: WebSocket | null = null;
     let closed = false;
     let reconnectTimer: number | null = null;
@@ -672,7 +684,25 @@ function FamilyDashboardPage() {
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
     };
-  }, [familyId, isAuthenticated, queryClient, refetchMoods, refetchPins]);
+  }, [familyId, hasValidFamilyId, isAuthenticated, queryClient, refetchMoods, refetchPins]);
+
+  if (!hasValidFamilyId) {
+    return (
+      <div className="max-w-md mx-auto mt-20 text-center space-y-4 p-4">
+        <h1 className="font-display font-extrabold text-2xl">Invalid family</h1>
+        <p className="text-muted-foreground">Family id is missing from the URL.</p>
+        <Button asChild><Link to="/families">Choose family</Link></Button>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="max-w-md mx-auto mt-20 text-center space-y-4 p-4">
+        <div className="text-sm text-muted-foreground">Loading dashboard...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto p-3 md:p-6 space-y-4 pb-24">
@@ -1726,7 +1756,7 @@ function CreateChallengeModal({
   const { data: rewards } = useQuery({
     queryKey: ["challenge-rewards", familyId],
     queryFn: () => apiRequest<RewardOption[]>(`/api/families/${familyId}/rewards`),
-    enabled: !!familyId,
+    enabled: Number.isFinite(familyId) && familyId > 0,
   });
   const activeRewards = (rewards ?? []).filter((r) => r.isActive);
 
@@ -2022,5 +2052,3 @@ function PhotoLightbox({ image, onClose }: { image: { src: string; caption: stri
     </div>
   );
 }
-
-
