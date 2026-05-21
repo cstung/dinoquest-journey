@@ -58,7 +58,7 @@ import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
 import { useAuthStore, useFamilyStore } from "@/store";
 
-export const Route = createFileRoute("/families/$familyId/dashboard")({
+export const Route = createFileRoute("/families_/$familyId/dashboard")({
   head: () => ({
     meta: [
       { title: "Family Dashboard — DinoQuest" },
