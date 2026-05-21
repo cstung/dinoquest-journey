@@ -35,6 +35,7 @@ class TestQuestionDraft(APIModel):
 class TestPreviewRequest(APIModel):
     youtube_url: str
     question_count: int = Field(default=10, ge=3, le=30)
+    difficulty: str = "medium"
 
     @field_validator("youtube_url")
     @classmethod
@@ -43,6 +44,37 @@ class TestPreviewRequest(APIModel):
         if not cleaned:
             raise ValueError("YouTube URL is required")
         return cleaned
+
+    @field_validator("difficulty")
+    @classmethod
+    def validate_difficulty(cls, value: str) -> str:
+        lowered = value.strip().lower()
+        if lowered not in {"easy", "medium", "hard"}:
+            raise ValueError("difficulty must be easy, medium, or hard")
+        return lowered
+
+
+class TestSubtitlePreviewRequest(APIModel):
+    youtube_url: str
+
+    @field_validator("youtube_url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("YouTube URL is required")
+        return cleaned
+
+
+class TestSubtitlePreviewOut(APIModel):
+    title: str
+    youtube_url: str
+    video_id: str
+    thumbnail_url: str
+    subtitle_source: str
+    transcript_word_count: int
+    transcript_preview: str
+    raw_transcript: str
 
 
 class TestPreviewOut(APIModel):
@@ -57,11 +89,47 @@ class TestPreviewOut(APIModel):
     questions: list[TestQuestionDraft]
 
 
+class TestGenerateQuestionsRequest(APIModel):
+    title: str
+    raw_transcript: str
+    question_count: int = Field(default=10, ge=3, le=30)
+    difficulty: str = "medium"
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Test title is required")
+        return cleaned
+
+    @field_validator("raw_transcript")
+    @classmethod
+    def validate_raw_transcript(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Transcript is required")
+        return cleaned
+
+    @field_validator("difficulty")
+    @classmethod
+    def validate_difficulty(cls, value: str) -> str:
+        lowered = value.strip().lower()
+        if lowered not in {"easy", "medium", "hard"}:
+            raise ValueError("difficulty must be easy, medium, or hard")
+        return lowered
+
+
+class TestGenerateQuestionsOut(APIModel):
+    questions: list[TestQuestionDraft]
+
+
 class TestRegenerateQuestionRequest(APIModel):
     title: str
     raw_transcript: str
     existing_questions: list[str] = Field(default_factory=list)
     target_question_text: str | None = None
+    difficulty: str = "medium"
 
     @field_validator("title")
     @classmethod
@@ -79,6 +147,14 @@ class TestRegenerateQuestionRequest(APIModel):
             raise ValueError("Transcript is required")
         return cleaned
 
+    @field_validator("difficulty")
+    @classmethod
+    def validate_difficulty(cls, value: str) -> str:
+        lowered = value.strip().lower()
+        if lowered not in {"easy", "medium", "hard"}:
+            raise ValueError("difficulty must be easy, medium, or hard")
+        return lowered
+
 
 class TestPublishRequest(APIModel):
     title: str
@@ -88,6 +164,7 @@ class TestPublishRequest(APIModel):
     subtitle_source: str = "youtube_auto"
     raw_transcript: str
     question_count: int = Field(ge=3, le=30)
+    difficulty: str = "medium"
     time_limit_min: int = Field(default=30, ge=1, le=180)
     max_xp: int = Field(default=100, ge=1, le=10000)
     assigned_user_ids: list[int]
@@ -108,6 +185,14 @@ class TestPublishRequest(APIModel):
         if not cleaned:
             raise ValueError("Transcript is required")
         return cleaned
+
+    @field_validator("difficulty")
+    @classmethod
+    def validate_difficulty(cls, value: str) -> str:
+        lowered = value.strip().lower()
+        if lowered not in {"easy", "medium", "hard"}:
+            raise ValueError("difficulty must be easy, medium, or hard")
+        return lowered
 
     @model_validator(mode="after")
     def validate_questions_count(self) -> "TestPublishRequest":
@@ -135,6 +220,8 @@ class TestListItemOut(APIModel):
     time_limit_min: int
     max_xp: int
     status: str
+    availability_status: str
+    difficulty: str
     subtitle_source: str
     assigned_members: list[TestAssignedMemberOut]
     reopen_pending_count: int
@@ -248,3 +335,7 @@ class TestReopenResolveOut(APIModel):
     xp_delta: int
     total_xp: int
     level: int
+
+
+class TestAvailabilityUpdateIn(APIModel):
+    is_active: bool

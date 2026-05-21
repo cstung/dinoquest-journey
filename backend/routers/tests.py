@@ -22,6 +22,9 @@ from backend.models import (
 )
 from backend.realtime import emit_family_event
 from backend.schemas.video_test import (
+    TestAvailabilityUpdateIn,
+    TestGenerateQuestionsOut,
+    TestGenerateQuestionsRequest,
     TestAttemptReviewOut,
     TestAttemptReviewQuestionOut,
     TestAssignedMemberOut,
@@ -32,6 +35,8 @@ from backend.schemas.video_test import (
     TestPreviewRequest,
     TestQuestionDraft,
     TestRegenerateQuestionRequest,
+    TestSubtitlePreviewOut,
+    TestSubtitlePreviewRequest,
     TestPublishRequest,
     TestQuestionForAttemptOut,
     TestReopenRequestIn,
@@ -69,6 +74,15 @@ def _option_index(label: str) -> int:
         return {"A": 0, "B": 1, "C": 2, "D": 3}[label]
     except KeyError as exc:
         raise ValueError("Invalid option label") from exc
+
+
+def _availability_status(value: str) -> str:
+    lowered = (value or "").strip().lower()
+    if lowered in {"inactive", "disabled"}:
+        return "inactive"
+    if lowered in {"deleted", "archived"}:
+        return "deleted"
+    return "active"
 
 
 async def _assignment_status_for_test(
@@ -150,6 +164,8 @@ async def _list_item(
         time_limit_min=max(test.time_limit_sec // 60, 1),
         max_xp=test.max_xp,
         status=status_value,
+        availability_status=_availability_status(test.status),
+        difficulty=(test.difficulty or "medium").strip().lower(),
         subtitle_source=test.subtitle_source,
         assigned_members=members,
         reopen_pending_count=reopen_pending_count,
@@ -202,6 +218,7 @@ async def preview_test(
         transcript=subtitle.raw_transcript,
         title=subtitle.title,
         question_count=body.question_count,
+        difficulty=body.difficulty,
     )
     words = len(subtitle.raw_transcript.split())
     preview = subtitle.raw_transcript[:360] + ("..." if len(subtitle.raw_transcript) > 360 else "")
@@ -218,6 +235,46 @@ async def preview_test(
     )
 
 
+@router.post("/{family_id}/tests/preview/subtitle", response_model=TestSubtitlePreviewOut)
+async def preview_subtitle(
+    body: TestSubtitlePreviewRequest,
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> TestSubtitlePreviewOut:
+    del parent_member
+    del db
+    subtitle = await build_subtitle_payload(body.youtube_url)
+    words = len(subtitle.raw_transcript.split())
+    preview = subtitle.raw_transcript[:360] + ("..." if len(subtitle.raw_transcript) > 360 else "")
+    return TestSubtitlePreviewOut(
+        title=subtitle.title,
+        youtube_url=subtitle.youtube_url,
+        video_id=subtitle.video_id,
+        thumbnail_url=subtitle.thumbnail_url,
+        subtitle_source=subtitle.subtitle_source,
+        transcript_word_count=words,
+        transcript_preview=preview,
+        raw_transcript=subtitle.raw_transcript,
+    )
+
+
+@router.post("/{family_id}/tests/preview/questions", response_model=TestGenerateQuestionsOut)
+async def preview_questions_from_transcript(
+    body: TestGenerateQuestionsRequest,
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> TestGenerateQuestionsOut:
+    del parent_member
+    del db
+    questions = await generate_quiz_questions(
+        transcript=body.raw_transcript,
+        title=body.title,
+        question_count=body.question_count,
+        difficulty=body.difficulty,
+    )
+    return TestGenerateQuestionsOut(questions=questions)
+
+
 @router.post("/{family_id}/tests/preview/regenerate-question", response_model=TestQuestionDraft)
 async def regenerate_preview_question(
     body: TestRegenerateQuestionRequest,
@@ -231,6 +288,7 @@ async def regenerate_preview_question(
         title=body.title,
         existing_questions=body.existing_questions,
         target_question_text=body.target_question_text,
+        difficulty=body.difficulty,
     )
 
 
@@ -266,7 +324,8 @@ async def publish_test(
         time_limit_sec=body.time_limit_min * 60,
         max_xp=body.max_xp,
         question_count=body.question_count,
-        status="published",
+        difficulty=body.difficulty,
+        status="active",
     )
     db.add(video_test)
     await db.flush()
@@ -326,7 +385,10 @@ async def list_tests(
 ) -> TestPageOut:
     created_before = _parse_cursor(cursor)
 
-    base = select(VideoTest).where(VideoTest.family_id == membership.family_id)
+    base = select(VideoTest).where(
+        VideoTest.family_id == membership.family_id,
+        VideoTest.status != "deleted",
+    )
     if created_before:
         base = base.where(VideoTest.created_at < created_before)
     if search:
@@ -347,14 +409,23 @@ async def list_tests(
     for test in page_tests:
         item = await _list_item(test, membership, db)
         if status_filter and status_filter != "all":
-            if status_filter == "published":
+            if status_filter in {"published", "open"}:
                 if item.status not in {"published", "reopen_requested"}:
+                    continue
+            elif status_filter == "inactive":
+                if item.availability_status != "inactive":
+                    continue
+            elif status_filter == "completed":
+                if item.status not in {"completed", "reopen_requested"}:
                     continue
             elif item.status != status_filter:
                 continue
         items.append(item)
 
-    total_query = select(func.count(VideoTest.id)).where(VideoTest.family_id == membership.family_id)
+    total_query = select(func.count(VideoTest.id)).where(
+        VideoTest.family_id == membership.family_id,
+        VideoTest.status != "deleted",
+    )
     if membership.role == "child":
         total_query = (
             select(func.count(VideoTest.id))
@@ -362,6 +433,7 @@ async def list_tests(
             .join(TestAssignment, TestAssignment.test_id == VideoTest.id)
             .where(
                 VideoTest.family_id == membership.family_id,
+                VideoTest.status != "deleted",
                 TestAssignment.user_id == membership.user_id,
             )
         )
@@ -385,6 +457,8 @@ async def start_attempt(
         raise HTTPException(status_code=403, detail="Only children can take tests")
 
     test = await _validate_test_access(test_id=test_id, membership=membership, db=db)
+    if _availability_status(test.status) != "active":
+        raise HTTPException(status_code=400, detail="Test is inactive")
     assignment = (
         await db.execute(
             select(TestAssignment).where(
@@ -569,6 +643,42 @@ async def submit_attempt(
         total_xp=level_row.total_xp,
         level=level_row.level,
     )
+
+
+@router.patch("/{family_id}/tests/{test_id}/availability", response_model=TestListItemOut)
+async def update_test_availability(
+    test_id: int,
+    body: TestAvailabilityUpdateIn,
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> TestListItemOut:
+    test = await _validate_test_access(test_id=test_id, membership=parent_member, db=db)
+    test.status = "active" if body.is_active else "inactive"
+    await db.commit()
+    await db.refresh(test)
+    await emit_family_event(
+        parent_member.family_id,
+        "test_updated",
+        {"testId": test.id, "availabilityStatus": _availability_status(test.status)},
+    )
+    return await _list_item(test, parent_member, db)
+
+
+@router.delete("/{family_id}/tests/{test_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_test(
+    test_id: int,
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    test = await _validate_test_access(test_id=test_id, membership=parent_member, db=db)
+    test.status = "deleted"
+    await db.commit()
+    await emit_family_event(
+        parent_member.family_id,
+        "test_updated",
+        {"testId": test.id, "availabilityStatus": "deleted"},
+    )
+    return None
 
 
 @router.get(

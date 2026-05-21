@@ -23,6 +23,7 @@ class VideoTest(Base):
     time_limit_sec: Mapped[int] = mapped_column(nullable=False)
     max_xp: Mapped[int] = mapped_column(nullable=False, default=100)
     question_count: Mapped[int] = mapped_column(nullable=False)
+    difficulty: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -105,4 +106,3 @@ class TestReopenRequest(Base):
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-

@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { AlertCircle, Clock, Play, Plus } from "lucide-react";
+import { AlertCircle, Clock, Play, Plus, Power, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFamilyStore } from "@/store";
 import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
@@ -9,6 +9,8 @@ import {
   useResolveReopenRequest,
   useRequestReopen,
   useTests,
+  useUpdateTestAvailability,
+  useDeleteTest,
   type TestListItem,
 } from "@/hooks/use-tests";
 
@@ -24,13 +26,32 @@ function TestsPage() {
   const familyId = useFamilyStore((s) => s.activeFamilyId);
   const role = useFamilyStore((s) => s.activeFamilyRole);
   const isParent = role === "parent";
-  const [tab, setTab] = useState<"all" | "draft" | "published" | "completed">("all");
+  const [tab, setTab] = useState<"all" | "open" | "completed" | "inactive">("all");
   const [search, setSearch] = useState("");
-  const { data, isLoading, error } = useTests(familyId, { status: tab, search });
-  const tests = useMemo(() => data?.items ?? [], [data?.items]);
+  const { data, isLoading, error } = useTests(familyId, { status: "all", search });
+  const tests = useMemo(() => {
+    const all = data?.items ?? [];
+    if (tab === "all") return all;
+    if (tab === "inactive") return all.filter((item) => item.availabilityStatus === "inactive");
+    if (tab === "open") {
+      if (isParent) {
+        return all.filter(
+          (item) =>
+            item.availabilityStatus === "active" &&
+            (item.status === "published" || item.status === "reopen_requested"),
+        );
+      }
+      return all.filter((item) => item.status === "published");
+    }
+    return all.filter((item) => item.status === "completed" || item.status === "reopen_requested");
+  }, [data?.items, tab, isParent]);
   const reopenCount = useMemo(
-    () => tests.reduce((acc, item) => acc + (item.status === "reopen_requested" ? 1 : 0), 0),
-    [tests],
+    () =>
+      (data?.items ?? []).reduce(
+        (acc, item) => acc + (item.status === "reopen_requested" ? 1 : 0),
+        0,
+      ),
+    [data?.items],
   );
 
   if (!familyId) {
@@ -83,20 +104,28 @@ function TestsPage() {
       />
 
       <div className="flex gap-2 border-b-2 border-border overflow-x-auto">
-        {(isParent ? ["all", "draft", "published", "completed"] : ["all", "completed"]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t as typeof tab)}
-            className={cn(
-              "px-4 py-2.5 font-display font-extrabold uppercase text-sm tracking-wide border-b-4 -mb-0.5 whitespace-nowrap transition-colors",
-              tab === t
-                ? "border-info text-info"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t}
-          </button>
-        ))}
+        {(isParent ? ["all", "open", "completed", "inactive"] : ["all", "open", "completed"]).map(
+          (t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t as "all" | "open" | "completed" | "inactive")}
+              className={cn(
+                "px-4 py-2.5 font-display font-extrabold uppercase text-sm tracking-wide border-b-4 -mb-0.5 whitespace-nowrap transition-colors",
+                tab === t
+                  ? "border-info text-info"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {t === "all"
+                ? "All"
+                : t === "open"
+                  ? "Open"
+                  : t === "completed"
+                    ? "Completed"
+                    : "Inactive"}
+            </button>
+          ),
+        )}
       </div>
 
       <div className="grid gap-4">
@@ -126,12 +155,15 @@ function TestCard({
 }) {
   const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const reopenMutation = useRequestReopen(familyId, test.id);
+  const availabilityMutation = useUpdateTestAvailability(familyId, test.id);
+  const deleteMutation = useDeleteTest(familyId, test.id);
   const reopenRequestsQuery = useReopenRequests(
     familyId,
     test.id,
     isParent && test.reopenPendingCount > 0,
   );
   const resolveReopenMutation = useResolveReopenRequest(familyId, test.id);
+  const isInactive = test.availabilityStatus === "inactive";
 
   const requestReopen = async () => {
     setActionResult(null);
@@ -172,6 +204,44 @@ function TestCard({
     }
   };
 
+  const toggleAvailability = async () => {
+    setActionResult(null);
+    try {
+      await availabilityMutation.mutateAsync({ isActive: isInactive });
+      setActionResult({
+        title: isInactive ? "Activated" : "Deactivated",
+        message: isInactive ? "Test is now open for children." : "Test is now inactive.",
+        variant: "success",
+      });
+    } catch (err) {
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
+    }
+  };
+
+  const deleteTest = async () => {
+    const confirmed = window.confirm(`Delete "${test.title}"? This cannot be undone.`);
+    if (!confirmed) return;
+    setActionResult(null);
+    try {
+      await deleteMutation.mutateAsync();
+      setActionResult({
+        title: "Deleted",
+        message: "Test deleted successfully.",
+        variant: "success",
+      });
+    } catch (err) {
+      setActionResult({
+        title: "Delete Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
+    }
+  };
+
   return (
     <div className="rounded-2xl bg-card border-2 border-border p-4 card-pop flex flex-col gap-4">
       <div className="flex flex-col sm:flex-row gap-4">
@@ -198,6 +268,8 @@ function TestCard({
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <StatusBadge status={test.status} />
+              <AvailabilityBadge availabilityStatus={test.availabilityStatus} />
+              <DifficultyBadge difficulty={test.difficulty} />
               <span className="text-[10px] font-bold uppercase text-muted-foreground">
                 Subtitles: {subtitleSourceLabel(test.subtitleSource)}
               </span>
@@ -228,9 +300,28 @@ function TestCard({
             <div className="flex items-center gap-3">
               <span className="text-sm font-extrabold text-warning">+{test.maxXp} XP</span>
               {isParent ? (
-                <span className="rounded-xl bg-info/15 text-info font-display font-extrabold uppercase text-xs px-3 py-2">
-                  Parent View
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleAvailability}
+                    disabled={availabilityMutation.isPending}
+                    className="rounded-xl bg-secondary font-display font-extrabold uppercase text-xs px-3 py-2 inline-flex items-center gap-1 disabled:opacity-60"
+                  >
+                    <Power className="size-3.5" />
+                    {availabilityMutation.isPending
+                      ? "Saving..."
+                      : isInactive
+                        ? "Activate"
+                        : "Deactivate"}
+                  </button>
+                  <button
+                    onClick={deleteTest}
+                    disabled={deleteMutation.isPending}
+                    className="rounded-xl bg-destructive/20 text-destructive font-display font-extrabold uppercase text-xs px-3 py-2 inline-flex items-center gap-1 disabled:opacity-60"
+                  >
+                    <Trash2 className="size-3.5" />
+                    {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
               ) : (
                 <div className="flex gap-2">
                   {test.status === "completed" ? (
@@ -241,14 +332,25 @@ function TestCard({
                     >
                       {reopenMutation.isPending ? "Sending..." : "Request Reopen"}
                     </button>
+                  ) : test.status === "reopen_requested" ? (
+                    <span className="rounded-xl bg-warning/20 text-warning font-display font-extrabold uppercase text-xs px-3 py-2">
+                      Retry Requested
+                    </span>
                   ) : (
-                    <Link
-                      to="/tests/$testId/take"
-                      params={{ testId: String(test.id) }}
-                      className="rounded-xl bg-primary text-primary-foreground font-display font-extrabold uppercase text-xs px-3 py-2 btn-pop inline-flex items-center"
-                    >
-                      Start Test
-                    </Link>
+                    <>
+                      <Link
+                        to="/tests/$testId/take"
+                        params={{ testId: String(test.id) }}
+                        className={cn(
+                          "rounded-xl font-display font-extrabold uppercase text-xs px-3 py-2 inline-flex items-center",
+                          isInactive
+                            ? "bg-muted text-muted-foreground pointer-events-none"
+                            : "bg-primary text-primary-foreground btn-pop",
+                        )}
+                      >
+                        {isInactive ? "Inactive" : "Start Test"}
+                      </Link>
+                    </>
                   )}
                 </div>
               )}
@@ -318,7 +420,7 @@ function StatusBadge({ status }: { status: string }) {
   };
   const label: Record<string, string> = {
     draft: "Draft",
-    published: "Published",
+    published: "Pending",
     completed: "Done",
     reopen_requested: "Reopen Requested",
   };
@@ -330,6 +432,30 @@ function StatusBadge({ status }: { status: string }) {
       )}
     >
       {label[status] ?? status}
+    </span>
+  );
+}
+
+function AvailabilityBadge({ availabilityStatus }: { availabilityStatus: string }) {
+  const cls =
+    availabilityStatus === "inactive"
+      ? "bg-muted text-muted-foreground"
+      : "bg-emerald-100 text-emerald-700";
+  const label = availabilityStatus === "inactive" ? "Inactive" : "Active";
+  return (
+    <span
+      className={cn("text-[10px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-md", cls)}
+    >
+      {label}
+    </span>
+  );
+}
+
+function DifficultyBadge({ difficulty }: { difficulty: string }) {
+  const label = difficulty === "easy" ? "Easy" : difficulty === "hard" ? "Hard (Tricky)" : "Medium";
+  return (
+    <span className="text-[10px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-md bg-secondary text-secondary-foreground">
+      {label}
     </span>
   );
 }

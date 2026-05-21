@@ -8,6 +8,8 @@ export type TestSubtitleSource =
   | "whisper"
   | "fallback_local";
 
+export type TestDifficulty = "easy" | "medium" | "hard";
+
 export interface TestAssignedMember {
   userId: number;
   username: string;
@@ -35,6 +37,17 @@ export interface TestPreview {
   questions: TestQuestionDraft[];
 }
 
+export interface TestSubtitlePreview {
+  title: string;
+  youtubeUrl: string;
+  videoId: string;
+  thumbnailUrl: string;
+  subtitleSource: TestSubtitleSource;
+  transcriptWordCount: number;
+  transcriptPreview: string;
+  rawTranscript: string;
+}
+
 export interface TestListItem {
   id: number;
   title: string;
@@ -44,6 +57,8 @@ export interface TestListItem {
   timeLimitMin: number;
   maxXp: number;
   status: "draft" | "published" | "completed" | "reopen_requested";
+  availabilityStatus: "active" | "inactive" | "deleted";
+  difficulty: TestDifficulty;
   subtitleSource: TestSubtitleSource;
   assignedMembers: TestAssignedMember[];
   reopenPendingCount: number;
@@ -137,7 +152,7 @@ export function useTests(
   familyId: number | null,
   options?: {
     search?: string;
-    status?: "all" | "draft" | "published" | "completed" | "reopen_requested";
+    status?: "all" | "open" | "completed" | "inactive";
   },
 ) {
   return useQuery({
@@ -155,11 +170,39 @@ export function useTests(
 
 export function usePreviewTest(familyId: number | null) {
   return useMutation({
-    mutationFn: (body: { youtubeUrl: string; questionCount: number }) =>
+    mutationFn: (body: { youtubeUrl: string; questionCount: number; difficulty: TestDifficulty }) =>
       apiRequest<TestPreview>(`/api/families/${familyId}/tests/preview`, {
         method: "POST",
         body: JSON.stringify(body),
       }),
+  });
+}
+
+export function usePreviewSubtitle(familyId: number | null) {
+  return useMutation({
+    mutationFn: (body: { youtubeUrl: string }) =>
+      apiRequest<TestSubtitlePreview>(`/api/families/${familyId}/tests/preview/subtitle`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+export function useGeneratePreviewQuestions(familyId: number | null) {
+  return useMutation({
+    mutationFn: (body: {
+      title: string;
+      rawTranscript: string;
+      questionCount: number;
+      difficulty: TestDifficulty;
+    }) =>
+      apiRequest<{ questions: TestQuestionDraft[] }>(
+        `/api/families/${familyId}/tests/preview/questions`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      ),
   });
 }
 
@@ -170,6 +213,7 @@ export function useRegeneratePreviewQuestion(familyId: number | null) {
       rawTranscript: string;
       existingQuestions: string[];
       targetQuestionText?: string | null;
+      difficulty: TestDifficulty;
     }) =>
       apiRequest<TestQuestionDraft>(`/api/families/${familyId}/tests/preview/regenerate-question`, {
         method: "POST",
@@ -189,6 +233,7 @@ export function usePublishTest(familyId: number | null) {
       subtitleSource: TestSubtitleSource;
       rawTranscript: string;
       questionCount: number;
+      difficulty: TestDifficulty;
       timeLimitMin: number;
       maxXp: number;
       assignedUserIds: number[];
@@ -197,6 +242,33 @@ export function usePublishTest(familyId: number | null) {
       apiRequest<TestListItem>(`/api/families/${familyId}/tests`, {
         method: "POST",
         body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tests", familyId] });
+    },
+  });
+}
+
+export function useUpdateTestAvailability(familyId: number | null, testId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { isActive: boolean }) =>
+      apiRequest<TestListItem>(`/api/families/${familyId}/tests/${testId}/availability`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tests", familyId] });
+    },
+  });
+}
+
+export function useDeleteTest(familyId: number | null, testId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<void>(`/api/families/${familyId}/tests/${testId}`, {
+        method: "DELETE",
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tests", familyId] });

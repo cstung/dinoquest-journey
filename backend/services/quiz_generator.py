@@ -50,6 +50,29 @@ def _fallback_questions(*, transcript: str, title: str, question_count: int) -> 
     return questions
 
 
+def _difficulty_instructions(difficulty: str) -> str:
+    level = (difficulty or "medium").strip().lower()
+    if level == "easy":
+        return (
+            "Difficulty: EASY.\n"
+            "- Use very short, simple sentences and obvious answer differences.\n"
+            "- Questions should focus on direct facts from the transcript.\n"
+            "- Avoid tricky distractors."
+        )
+    if level == "hard":
+        return (
+            "Difficulty: HARD (tricky).\n"
+            "- Use deeper comprehension and inference questions.\n"
+            "- Include plausible, tricky distractors that are close to correct meaning.\n"
+            "- Keep child-safe language but increase cognitive challenge."
+        )
+    return (
+        "Difficulty: MEDIUM.\n"
+        "- Mix direct recall and simple comprehension.\n"
+        "- Distractors should be reasonable but not overly tricky."
+    )
+
+
 def _fallback_single_question(
     *,
     transcript: str,
@@ -94,7 +117,13 @@ def _normalize_llm_question(item: dict) -> TestQuestionDraft:
     )
 
 
-def _generate_with_openai_sync(*, transcript: str, title: str, question_count: int) -> list[TestQuestionDraft]:
+def _generate_with_openai_sync(
+    *,
+    transcript: str,
+    title: str,
+    question_count: int,
+    difficulty: str,
+) -> list[TestQuestionDraft]:
     settings = get_settings()
     if OpenAI is None or not settings.openai_api_key.strip():
         raise RuntimeError("OpenAI SDK/key unavailable")
@@ -104,6 +133,7 @@ def _generate_with_openai_sync(*, transcript: str, title: str, question_count: i
         "Create age-appropriate (ages 6-12) multiple-choice quiz questions from the transcript.\n"
         f"Title: {title}\n"
         f"Question count: {question_count}\n\n"
+        f"{_difficulty_instructions(difficulty)}\n\n"
         "Return ONLY JSON with this exact shape:\n"
         '{ "questions": [ { "questionText": string, "options": [string,string,string,string], "correctOption": 0-3, "explanation": string } ] }\n'
         "Rules:\n"
@@ -146,6 +176,7 @@ def _generate_single_with_openai_sync(
     title: str,
     existing_questions: list[str] | None = None,
     target_question_text: str | None = None,
+    difficulty: str,
 ) -> TestQuestionDraft:
     settings = get_settings()
     if OpenAI is None or not settings.openai_api_key.strip():
@@ -157,6 +188,7 @@ def _generate_single_with_openai_sync(
     prompt = (
         "Generate ONE age-appropriate (ages 6-12) multiple-choice question from the transcript.\n"
         f"Title: {title}\n"
+        f"{_difficulty_instructions(difficulty)}\n"
         f"Question to replace (if any): {target_block}\n"
         "Avoid duplicating these existing questions:\n"
         f"{existing_block}\n\n"
@@ -197,6 +229,7 @@ async def generate_quiz_questions(
     transcript: str,
     title: str,
     question_count: int,
+    difficulty: str = "medium",
 ) -> list[TestQuestionDraft]:
     try:
         return await asyncio.to_thread(
@@ -204,6 +237,7 @@ async def generate_quiz_questions(
             transcript=transcript,
             title=title,
             question_count=question_count,
+            difficulty=difficulty,
         )
     except Exception:
         return _fallback_questions(
@@ -219,6 +253,7 @@ async def generate_single_quiz_question(
     title: str,
     existing_questions: list[str] | None = None,
     target_question_text: str | None = None,
+    difficulty: str = "medium",
 ) -> TestQuestionDraft:
     try:
         return await asyncio.to_thread(
@@ -227,6 +262,7 @@ async def generate_single_quiz_question(
             title=title,
             existing_questions=existing_questions,
             target_question_text=target_question_text,
+            difficulty=difficulty,
         )
     except Exception:
         return _fallback_single_question(

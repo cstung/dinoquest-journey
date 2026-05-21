@@ -5,10 +5,12 @@ import { cn } from "@/lib/utils";
 import { useFamilyStore } from "@/store";
 import { useFamilyMembers } from "@/hooks/use-families";
 import {
-  usePreviewTest,
-  usePublishTest,
+  useGeneratePreviewQuestions,
   useRegeneratePreviewQuestion,
-  type TestPreview,
+  usePreviewSubtitle,
+  usePublishTest,
+  type TestDifficulty,
+  type TestSubtitlePreview,
 } from "@/hooks/use-tests";
 
 export const Route = createFileRoute("/tests/new")({ component: NewTestWizard });
@@ -25,26 +27,28 @@ function NewTestWizard() {
   const role = useFamilyStore((s) => s.activeFamilyRole);
   const nav = useNavigate();
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [preview, setPreview] = useState<TestPreview | null>(null);
+  const [subtitlePreview, setSubtitlePreview] = useState<TestSubtitlePreview | null>(null);
   const [title, setTitle] = useState("");
   const [timeLimitMin, setTimeLimitMin] = useState(30);
   const [maxXp, setMaxXp] = useState(100);
+  const [difficulty, setDifficulty] = useState<TestDifficulty>("medium");
   const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
   const [questions, setQuestions] = useState<EditorQuestion[]>([]);
   const [regeneratingQuestionId, setRegeneratingQuestionId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const membersQuery = useFamilyMembers(familyId);
-  const previewMutation = usePreviewTest(familyId);
+  const subtitleMutation = usePreviewSubtitle(familyId);
+  const generateQuestionsMutation = useGeneratePreviewQuestions(familyId);
   const regenerateMutation = useRegeneratePreviewQuestion(familyId);
   const publishMutation = usePublishTest(familyId);
   const childMembers = (membersQuery.data ?? []).filter((m) => m.role === "child");
 
   useEffect(() => {
-    if (!preview) return;
+    if (!subtitlePreview) return;
     if (assignedUserIds.length > 0) return;
     setAssignedUserIds(childMembers.map((m) => m.userId));
-  }, [preview, assignedUserIds.length, childMembers]);
+  }, [subtitlePreview, assignedUserIds.length, childMembers]);
 
   if (!familyId) {
     return <div className="py-10 text-sm text-muted-foreground">Select a family first.</div>;
@@ -94,14 +98,41 @@ function NewTestWizard() {
 
       {step === 1 && (
         <Step1
-          loading={previewMutation.isPending}
+          loadingSubtitle={subtitleMutation.isPending}
+          loadingQuestions={generateQuestionsMutation.isPending}
+          subtitle={subtitlePreview}
+          difficulty={difficulty}
+          setDifficulty={setDifficulty}
           error={error}
-          onGenerate={async (youtubeUrl, questionCount) => {
+          onDownloadSubtitle={async (youtubeUrl) => {
             setError(null);
             try {
-              const data = await previewMutation.mutateAsync({ youtubeUrl, questionCount });
-              setPreview(data);
-              setTitle(data.title);
+              const subtitle = await subtitleMutation.mutateAsync({ youtubeUrl });
+              setSubtitlePreview(subtitle);
+              setTitle(subtitle.title);
+              setQuestions([]);
+              setRegeneratingQuestionId(null);
+            } catch (err) {
+              setError((err as Error).message);
+            }
+          }}
+          onGenerateQuiz={async (youtubeUrl, questionCount) => {
+            setError(null);
+            try {
+              let subtitle = subtitlePreview;
+              const normalizedInput = youtubeUrl.trim();
+              if (!subtitle || subtitle.youtubeUrl.trim() !== normalizedInput) {
+                subtitle = await subtitleMutation.mutateAsync({ youtubeUrl });
+                setSubtitlePreview(subtitle);
+                setTitle(subtitle.title);
+              }
+
+              const data = await generateQuestionsMutation.mutateAsync({
+                title: subtitle.title,
+                rawTranscript: subtitle.rawTranscript,
+                questionCount,
+                difficulty,
+              });
               setQuestions(
                 data.questions.map((q, idx) => ({
                   id: idx + 1,
@@ -119,9 +150,9 @@ function NewTestWizard() {
         />
       )}
 
-      {step === 2 && preview && (
+      {step === 2 && subtitlePreview && (
         <Step2
-          preview={preview}
+          subtitle={subtitlePreview}
           title={title}
           questions={questions}
           setQuestions={setQuestions}
@@ -134,13 +165,14 @@ function NewTestWizard() {
             setRegeneratingQuestionId(questionId);
             try {
               const replacement = await regenerateMutation.mutateAsync({
-                title: title.trim() || preview.title,
-                rawTranscript: preview.rawTranscript,
+                title: subtitlePreview.title,
+                rawTranscript: subtitlePreview.rawTranscript,
                 existingQuestions: questions
                   .filter((q) => q.id !== questionId)
                   .map((q) => q.text)
                   .filter((x) => x.trim().length > 0),
                 targetQuestionText: target.text,
+                difficulty,
               });
               setQuestions((prev) =>
                 prev.map((q) =>
@@ -170,10 +202,10 @@ function NewTestWizard() {
         />
       )}
 
-      {step === 3 && preview && (
+      {step === 3 && subtitlePreview && (
         <Step3
           title={title}
-          setTitle={setTitle}
+          difficulty={difficulty}
           timeLimitMin={timeLimitMin}
           setTimeLimitMin={setTimeLimitMin}
           maxXp={maxXp}
@@ -192,13 +224,14 @@ function NewTestWizard() {
             }
             try {
               await publishMutation.mutateAsync({
-                title,
-                youtubeUrl: preview.youtubeUrl,
-                videoId: preview.videoId,
-                thumbnailUrl: preview.thumbnailUrl,
-                subtitleSource: preview.subtitleSource,
-                rawTranscript: preview.rawTranscript,
+                title: subtitlePreview.title,
+                youtubeUrl: subtitlePreview.youtubeUrl,
+                videoId: subtitlePreview.videoId,
+                thumbnailUrl: subtitlePreview.thumbnailUrl,
+                subtitleSource: subtitlePreview.subtitleSource,
+                rawTranscript: subtitlePreview.rawTranscript,
                 questionCount: questions.length,
+                difficulty,
                 timeLimitMin,
                 maxXp,
                 assignedUserIds,
@@ -224,12 +257,22 @@ const inputCls =
   "w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-info";
 
 function Step1({
-  onGenerate,
-  loading,
+  onDownloadSubtitle,
+  onGenerateQuiz,
+  loadingSubtitle,
+  loadingQuestions,
+  subtitle,
+  difficulty,
+  setDifficulty,
   error,
 }: {
-  onGenerate: (youtubeUrl: string, questionCount: number) => Promise<void>;
-  loading: boolean;
+  onDownloadSubtitle: (youtubeUrl: string) => Promise<void>;
+  onGenerateQuiz: (youtubeUrl: string, questionCount: number) => Promise<void>;
+  loadingSubtitle: boolean;
+  loadingQuestions: boolean;
+  subtitle: TestSubtitlePreview | null;
+  difficulty: TestDifficulty;
+  setDifficulty: (value: TestDifficulty) => void;
   error: string | null;
 }) {
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -254,12 +297,49 @@ function Step1({
           className={inputCls + " max-w-32"}
         />
       </Field>
+      <Field label="Difficulty">
+        <select
+          value={difficulty}
+          onChange={(e) => setDifficulty(e.target.value as TestDifficulty)}
+          className={inputCls}
+        >
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard (Tricky)</option>
+        </select>
+      </Field>
       <button
-        onClick={() => onGenerate(youtubeUrl, questionCount)}
-        disabled={loading}
+        onClick={() => onDownloadSubtitle(youtubeUrl)}
+        disabled={loadingSubtitle}
         className="w-full rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase py-3.5 shadow-pop-sm inline-flex items-center justify-center gap-2 disabled:opacity-70"
       >
-        {loading ? (
+        {loadingSubtitle ? (
+          <>
+            <Loader2 className="size-5 animate-spin" /> Downloading subtitles...
+          </>
+        ) : (
+          "Download Subtitles"
+        )}
+      </button>
+      {subtitle && (
+        <div className="rounded-2xl border-2 border-info/20 bg-info/10 p-4 space-y-2">
+          <p className="font-bold text-sm">{subtitle.title}</p>
+          <p className="text-xs text-muted-foreground">
+            Difficulty: {difficultyLabel(difficulty)} · Source:{" "}
+            {subtitleSourceLabel(subtitle.subtitleSource)} ·{" "}
+            {subtitle.transcriptWordCount.toLocaleString()} words
+          </p>
+          <div className="max-h-56 overflow-auto rounded-xl border border-border bg-background/80 p-3 text-xs leading-relaxed">
+            {subtitle.rawTranscript}
+          </div>
+        </div>
+      )}
+      <button
+        onClick={() => onGenerateQuiz(youtubeUrl, questionCount)}
+        disabled={loadingQuestions || !subtitle}
+        className="w-full rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase py-3.5 shadow-pop-sm inline-flex items-center justify-center gap-2 disabled:opacity-70"
+      >
+        {loadingQuestions ? (
           <>
             <Loader2 className="size-5 animate-spin" /> Generating questions...
           </>
@@ -267,9 +347,9 @@ function Step1({
           "Generate Quiz"
         )}
       </button>
-      {loading && (
+      {(loadingSubtitle || loadingQuestions) && (
         <p className="text-center text-sm text-muted-foreground">
-          Fetching subtitles {"->"} Generating questions...
+          {loadingSubtitle ? "Fetching subtitles..." : "Generating questions..."}
         </p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -278,7 +358,7 @@ function Step1({
 }
 
 function Step2({
-  preview,
+  subtitle,
   title,
   questions,
   setQuestions,
@@ -288,7 +368,7 @@ function Step2({
   onBack,
   onNext,
 }: {
-  preview: TestPreview;
+  subtitle: TestSubtitlePreview;
   title: string;
   questions: EditorQuestion[];
   setQuestions: React.Dispatch<React.SetStateAction<EditorQuestion[]>>;
@@ -302,10 +382,10 @@ function Step2({
     <div className="space-y-4">
       <div className="rounded-2xl bg-info/10 border-2 border-info/20 p-4 flex items-center justify-between">
         <div>
-          <p className="font-bold text-sm">{title || preview.title}</p>
+          <p className="font-bold text-sm">{title || subtitle.title}</p>
           <p className="text-xs text-muted-foreground">
-            Transcript: ~{preview.transcriptWordCount.toLocaleString()} words · Source:{" "}
-            {subtitleSourceLabel(preview.subtitleSource)}
+            Transcript: ~{subtitle.transcriptWordCount.toLocaleString()} words · Source:{" "}
+            {subtitleSourceLabel(subtitle.subtitleSource)}
           </p>
         </div>
       </div>
@@ -420,7 +500,7 @@ function Step2({
 
 function Step3({
   title,
-  setTitle,
+  difficulty,
   timeLimitMin,
   setTimeLimitMin,
   maxXp,
@@ -434,7 +514,7 @@ function Step3({
   error,
 }: {
   title: string;
-  setTitle: (v: string) => void;
+  difficulty: TestDifficulty;
   timeLimitMin: number;
   setTimeLimitMin: (v: number) => void;
   maxXp: number;
@@ -449,10 +529,13 @@ function Step3({
 }) {
   return (
     <div className="rounded-3xl bg-card border-2 border-border p-6 space-y-5">
-      <Field label="Test Title">
-        <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} />
+      <Field label="Test Title (From Video)">
+        <input className={inputCls} value={title} readOnly />
       </Field>
       <div className="grid sm:grid-cols-2 gap-4">
+        <Field label="Difficulty">
+          <input className={inputCls} value={difficultyLabel(difficulty)} readOnly />
+        </Field>
         <Field label="Time Limit (min)">
           <input
             type="number"
@@ -531,4 +614,10 @@ function subtitleSourceLabel(source: string): string {
   if (source === "youtube_translated") return "YouTube Translated";
   if (source === "whisper") return "Whisper";
   return "Fallback";
+}
+
+function difficultyLabel(value: TestDifficulty): string {
+  if (value === "easy") return "Easy";
+  if (value === "hard") return "Hard (Tricky)";
+  return "Medium";
 }
