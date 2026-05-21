@@ -382,10 +382,10 @@ function FamilyDashboardPage() {
   });
 
   const moodMutation = useMutation({
-    mutationFn: ({ mood, shared }: { mood: string; shared: boolean }) =>
+    mutationFn: ({ mood }: { mood: string }) =>
       apiRequest<void>(`/api/families/${familyId}/mood-checkins`, {
         method: "POST",
-        body: JSON.stringify({ mood, shared }),
+        body: JSON.stringify({ mood, shared: true }),
       }),
     onSuccess: () => {
       refetchMoods();
@@ -470,7 +470,12 @@ function FamilyDashboardPage() {
       }
       return ns;
     });
-    if (willOpen && !commentsByPost[postId]) {
+
+    const post = posts.find((p) => p.id === postId);
+    const cachedComments = commentsByPost[postId];
+    const needsFetch = !cachedComments || (post && post.commentCount > cachedComments.length);
+
+    if (willOpen && needsFetch) {
       try {
         const data = await apiRequest<{ comments: Comment[] } | Comment[]>(
           `/api/families/${familyId}/wall-posts/${postId}/comments`,
@@ -663,8 +668,8 @@ function FamilyDashboardPage() {
       <div className="grid lg:grid-cols-[1fr_360px] gap-4">
         <MoodCheckin
           myMood={myMood}
-          onSubmit={(m, shared) => {
-            moodMutation.mutate({ mood: m, shared });
+          onSubmit={(m) => {
+            moodMutation.mutate({ mood: m });
           }}
         />
         <FamilyMoodPanel members={members} moods={moods} />
@@ -846,9 +851,8 @@ function StatsSnapshot({ stats }: { stats: DashboardStats }) {
 // Mood
 // ============================================================
 
-function MoodCheckin({ myMood, onSubmit }: { myMood: string | null; onSubmit: (m: string, shared: boolean) => void }) {
+function MoodCheckin({ myMood, onSubmit }: { myMood: string | null; onSubmit: (m: string) => void }) {
   const [editing, setEditing] = useState(!isMoodIconValue(myMood));
-  const [shared, setShared] = useState(false);
   const [choices, setChoices] = useState(() => MOOD_ICON_OPTIONS.slice(0, 5));
 
   useEffect(() => {
@@ -859,7 +863,7 @@ function MoodCheckin({ myMood, onSubmit }: { myMood: string | null; onSubmit: (m
   }, [myMood]);
 
   const pick = (m: string) => {
-    onSubmit(m, shared);
+    onSubmit(m);
     setEditing(false);
   };
   const shuffle = () => setChoices(pickMoodIcons());
@@ -888,10 +892,6 @@ function MoodCheckin({ myMood, onSubmit }: { myMood: string | null; onSubmit: (m
             <Button type="button" variant="secondary" size="sm" onClick={shuffle} className="rounded-xl font-bold">
               Next
             </Button>
-            <label className="flex items-center gap-1.5 text-xs font-bold ml-1 cursor-pointer">
-              <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} className="size-4" />
-              Share
-            </label>
           </div>
         </>
       ) : (
