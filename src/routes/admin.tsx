@@ -1,17 +1,28 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useFamilies } from "@/hooks/use-families";
+import { useAuthStore } from "@/store";
 
 export const Route = createFileRoute("/admin")({ component: AdminPage });
 
 function AdminPage() {
   const [search, setSearch] = useState("");
+  const user = useAuthStore((s) => s.user);
+  const isSuperadmin = user?.globalRole === "superadmin";
   const { data: families = [], isLoading, error } = useFamilies();
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return families;
     return families.filter((f) => f.name.toLowerCase().includes(q));
   }, [families, search]);
+
+  if (!isSuperadmin) {
+    return (
+      <div className="rounded-2xl bg-card border-2 border-border p-6 text-sm">
+        Admin access required.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

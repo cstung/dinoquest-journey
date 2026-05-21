@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Plus, Users, ArrowRight } from "lucide-react";
+import { useState } from "react";
 import { useAuthStore, useFamilyStore } from "@/store";
-import { useFamilies } from "@/hooks/use-families";
+import { useFamilies, useJoinFamily } from "@/hooks/use-families";
 
 export const Route = createFileRoute("/families/")({ component: FamiliesLobby });
 
@@ -9,6 +10,9 @@ function FamiliesLobby() {
   const { activeFamilyId, setActiveFamily } = useFamilyStore();
   const user = useAuthStore((s) => s.user);
   const { data: families = [], isLoading, error } = useFamilies();
+  const joinFamily = useJoinFamily();
+  const [joinCode, setJoinCode] = useState("");
+  const [joinMessage, setJoinMessage] = useState<string | null>(null);
   const isSuperadmin = user?.globalRole === "superadmin";
 
   if (isLoading) {
@@ -37,6 +41,40 @@ function FamiliesLobby() {
             </Link>
           )}
         </div>
+      </div>
+
+      <div className="rounded-2xl border-2 border-border bg-card p-4 space-y-3">
+        <h2 className="font-display font-extrabold uppercase text-sm tracking-wide">Join a Family</h2>
+        <div className="flex gap-2 flex-wrap">
+          <input
+            value={joinCode}
+            onChange={(e) => setJoinCode(e.target.value)}
+            placeholder="Enter invite code"
+            className="min-w-[220px] flex-1 rounded-xl border-2 border-border bg-background px-3 py-2 text-sm font-bold"
+          />
+          <button
+            type="button"
+            disabled={joinFamily.isPending || !joinCode.trim()}
+            onClick={() => {
+              setJoinMessage(null);
+              joinFamily.mutate(
+                { code: joinCode.trim() },
+                {
+                  onSuccess: (result) => {
+                    setActiveFamily(result.familyId, result.role);
+                    setJoinCode("");
+                    setJoinMessage(`Joined ${result.familyName}.`);
+                  },
+                  onError: (err) => setJoinMessage((err as Error).message),
+                },
+              );
+            }}
+            className="rounded-xl bg-info text-info-foreground font-display font-extrabold uppercase px-4 py-2 disabled:opacity-60"
+          >
+            {joinFamily.isPending ? "Joining..." : "Join"}
+          </button>
+        </div>
+        {joinMessage && <p className="text-sm text-muted-foreground">{joinMessage}</p>}
       </div>
 
       {families.length === 0 ? (

@@ -16,6 +16,7 @@ from backend.routers import (
     auth,
     families,
     invites,
+    join_requests,
     leaderboard,
     members,
     pets,
@@ -39,7 +40,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+    app.include_router(join_requests.router, prefix="/api", tags=["join"])
     app.include_router(families.router, prefix="/api/families", tags=["families"])
+    app.include_router(join_requests.legacy_router, prefix="/api", tags=["join-requests"])
     app.include_router(members.router, prefix="/api/families", tags=["members"])
     app.include_router(invites.router, prefix="/api/families", tags=["invites"])
     app.include_router(activity_log.router, prefix="/api/families", tags=["activity"])

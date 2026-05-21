@@ -9,8 +9,10 @@ import {
   useFamilyActivity,
   useFamilyDetail,
   useFamilyInvites,
+  useFamilyJoinRequests,
   useFamilyMembers,
   useRemoveMember,
+  useResolveJoinRequest,
   useRevokeInvite,
   useUpdateMemberRole,
   useUpdateFamily,
@@ -21,6 +23,7 @@ export const Route = createFileRoute("/families/$familyId")({ component: FamilyD
 const TABS = [
   { id: "members", label: "Members", icon: Users },
   { id: "invites", label: "Invites", icon: Mail },
+  { id: "join-requests", label: "Join Requests", icon: Mail },
   { id: "activity", label: "Activity", icon: Activity },
   { id: "audit", label: "Audit", icon: Shield },
   { id: "settings", label: "Settings", icon: Settings },
@@ -42,11 +45,16 @@ function FamilyDetail() {
   const isSuperadmin = user?.globalRole === "superadmin";
   const canManageMembers = isSuperadmin || detailQuery.data?.myRole === "parent";
   const membersQuery = useFamilyMembers(familyIdNum);
-  const invitesQuery = useFamilyInvites(familyIdNum, tab === "invites" && isSuperadmin);
+  const invitesQuery = useFamilyInvites(familyIdNum, tab === "invites" && canManageMembers);
+  const joinRequestsQuery = useFamilyJoinRequests(
+    familyIdNum,
+    tab === "join-requests" && canManageMembers,
+  );
   const activityQuery = useFamilyActivity(familyIdNum, "activity", tab === "activity");
   const auditQuery = useFamilyActivity(familyIdNum, "audit", tab === "audit");
   const createInvite = useCreateInvite(familyIdNum);
   const revokeInvite = useRevokeInvite(familyIdNum);
+  const resolveJoinRequest = useResolveJoinRequest(familyIdNum);
   const updateMemberRole = useUpdateMemberRole(familyIdNum);
   const removeMember = useRemoveMember(familyIdNum);
   const updateFamily = useUpdateFamily(familyIdNum);
@@ -120,6 +128,16 @@ function FamilyDetail() {
         clearActiveFamily();
       }
       nav({ to: "/families" });
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
+  };
+
+  const onResolveJoinRequest = async (joinRequestId: number, status: "approved" | "rejected") => {
+    setMessage(null);
+    try {
+      await resolveJoinRequest.mutateAsync({ joinRequestId, status });
+      setMessage(status === "approved" ? "Join request approved." : "Join request rejected.");
     } catch (err) {
       setMessage((err as Error).message);
     }
@@ -230,14 +248,14 @@ function FamilyDetail() {
             <select
               value={inviteRole}
               onChange={(e) => setInviteRole(e.target.value as "parent" | "child")}
-              disabled={!isSuperadmin || createInvite.isPending}
+              disabled={!canManageMembers || createInvite.isPending}
               className="rounded-2xl border-2 border-border bg-background px-4 py-2.5 text-sm font-bold disabled:opacity-60"
             >
               <option value="child">Child</option>
               <option value="parent">Parent</option>
             </select>
             <button
-              disabled={!isSuperadmin || createInvite.isPending}
+              disabled={!canManageMembers || createInvite.isPending}
               onClick={() =>
                 createInvite.mutate(
                   { role: inviteRole },
@@ -318,12 +336,70 @@ function FamilyDetail() {
                       Copy
                     </button>
                   </div>
+                  {inv.qrJoinLink && (
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        readOnly
+                        value={inv.qrJoinLink}
+                        className="flex-1 rounded-xl border border-border bg-background px-2 py-1.5 text-xs font-bold"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(inv.qrJoinLink as string);
+                          setMessage("QR join link copied.");
+                        }}
+                        className="rounded-lg bg-secondary px-2 py-1 text-xs font-bold"
+                      >
+                        Copy QR
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
               {(invitesQuery.data ?? []).length === 0 && (
                 <div className="text-sm text-muted-foreground">No active invites.</div>
               )}
             </div>
+          )}
+        </div>
+      )}
+
+      {tab === "join-requests" && (
+        <div className="space-y-3">
+          {!canManageMembers ? (
+            <div className="text-sm text-muted-foreground">Only parents can manage join requests.</div>
+          ) : joinRequestsQuery.isLoading ? (
+            <div className="text-sm text-muted-foreground">Loading join requests...</div>
+          ) : (joinRequestsQuery.data ?? []).length === 0 ? (
+            <div className="text-sm text-muted-foreground">No pending join requests.</div>
+          ) : (
+            (joinRequestsQuery.data ?? []).map((req) => (
+              <div key={req.id} className="rounded-2xl bg-card border-2 border-border p-4 flex items-center gap-3">
+                <div className="flex-1">
+                  <p className="font-bold">{req.username}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Requested {new Date(req.requestedAt).toLocaleString()}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onResolveJoinRequest(req.id, "approved")}
+                  disabled={resolveJoinRequest.isPending}
+                  className="rounded-lg bg-primary text-primary-foreground px-3 py-2 text-xs font-extrabold uppercase disabled:opacity-60"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onResolveJoinRequest(req.id, "rejected")}
+                  disabled={resolveJoinRequest.isPending}
+                  className="rounded-lg bg-secondary px-3 py-2 text-xs font-extrabold uppercase disabled:opacity-60"
+                >
+                  Reject
+                </button>
+              </div>
+            ))
           )}
         </div>
       )}
@@ -338,7 +414,7 @@ function FamilyDetail() {
               <div className="size-9 rounded-xl bg-primary/15 grid place-items-center">⚔️</div>
               <div className="flex-1">
                 <span className="font-bold">{a.username ?? "System"}</span>{" "}
-                <span className="text-muted-foreground">{a.eventType}</span>
+                <span className="text-muted-foreground">{formatFamilyEvent(a.eventType, a.payload)}</span>
               </div>
               <span className="text-xs text-muted-foreground">
                 {new Date(a.createdAt).toLocaleTimeString()}
@@ -361,7 +437,7 @@ function FamilyDetail() {
               <div className="size-9 rounded-xl bg-warning/15 grid place-items-center">🛡️</div>
               <div className="flex-1">
                 <span className="font-bold">{a.username ?? "System"}</span>{" "}
-                <span className="text-muted-foreground">{a.eventType}</span>
+                <span className="text-muted-foreground">{formatFamilyEvent(a.eventType, a.payload)}</span>
               </div>
               <span className="text-xs text-muted-foreground">
                 {new Date(a.createdAt).toLocaleTimeString()}
@@ -410,6 +486,32 @@ function FamilyDetail() {
 
 const inputCls =
   "w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary";
+
+function formatFamilyEvent(eventType: string, payload: Record<string, unknown> | null): string {
+  const p = payload ?? {};
+  const role = typeof p.role === "string" ? p.role : null;
+  switch (eventType) {
+    case "family_created":
+      return "created this family";
+    case "family_updated":
+      return "updated family settings";
+    case "family_deleted":
+      return "deleted this family";
+    case "member_joined":
+      return role ? `joined as ${role}` : "joined the family";
+    case "member_removed":
+      return "removed a family member";
+    case "invite_sent":
+      return "created an invite";
+    case "invite_revoked":
+      return "revoked an invite";
+    case "join_request_resolved":
+      return typeof p.status === "string" ? `resolved a join request (${p.status})` : "resolved a join request";
+    default:
+      return eventType.replaceAll("_", " ");
+  }
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1.5">

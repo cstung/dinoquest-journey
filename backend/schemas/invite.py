@@ -16,7 +16,9 @@ class InviteOut(APIModel):
     family_name: str | None = None
     role: str
     code: str
+    qr_token: str | None = None
     join_link: str
+    qr_join_link: str | None = None
     expires_at: datetime
     used_by: int | None
     revoked: bool

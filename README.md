@@ -85,6 +85,19 @@ Defined in `package.json`:
 - **API Routing:** Backend routes are family-scoped (e.g., `/api/families/{family_id}/quests`). The frontend manages the active family state and dynamically injects the `activeFamilyId` into requests.
 - **JSON Formatting:** API responses and payloads use `camelCase` for frontend consumption, mapped to `snake_case` in the backend.
 
+## Accessing Your Profile
+- Open the top-right user menu (avatar/initials chip in the header).
+- Click **Profile**.
+- The app routes to `/profile/:userId` for the currently logged-in user.
+
+### Role Notes
+- **Child / Parent:** Can always open their own profile from the user menu.
+- **Superadmin:** Can also open their own profile from the user menu, even without selecting an active family.
+
+### Direct URL
+- You can also access profile directly with:
+  - `/profile/<yourUserId>`
+
 ## Reward Thumbnail Specs
 - **Card ratio:** Square (`1:1`) to match the existing reward card media block.
 - **Recommended resolution:** `512 x 512 px` (best balance for sharpness and payload size in current UI).

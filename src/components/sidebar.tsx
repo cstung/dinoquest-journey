@@ -9,6 +9,7 @@ import {
   Gift,
   Users,
   Shield,
+  Medal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store";
@@ -22,6 +23,7 @@ const navItems = [
   { icon: Trophy, label: "Leaderboard", to: "/leaderboard" },
   { icon: Egg, label: "Pets", to: "/pets" },
   { icon: Gift, label: "Rewards", to: "/rewards" },
+  { icon: Medal, label: "Achievements", to: "/achievements" },
   { icon: Users, label: "Families", to: "/families" },
 ] as const;
 

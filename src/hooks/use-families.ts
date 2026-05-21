@@ -28,7 +28,9 @@ export interface Invite {
   familyName: string | null;
   role: "parent" | "child";
   code: string;
+  qrToken: string | null;
   joinLink: string;
+  qrJoinLink: string | null;
   expiresAt: string;
   usedBy: number | null;
   revoked: boolean;
@@ -38,7 +40,7 @@ export interface Invite {
 export interface JoinResult {
   familyId: number;
   familyName: string;
-  role: "parent" | "child";
+  role: "parent" | "child" | "superadmin";
 }
 
 export interface JoinRequestItem {

@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import appCss from "../styles.css?url";
 import { AppShell } from "@/components/app-shell";
 import { useFamilyRealtime } from "@/hooks/use-realtime";
-import { apiRequest } from "@/lib/api";
+import { ApiError, apiRequest } from "@/lib/api";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -50,16 +50,20 @@ function RootComponent() {
   const activeFamilyId = useFamilyStore((s) => s.activeFamilyId);
   const setActiveFamily = useFamilyStore((s) => s.setActiveFamily);
   const [authCheckDone, setAuthCheckDone] = useState(isAuthPage);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authRetry, setAuthRetry] = useState(0);
 
   useFamilyRealtime(activeFamilyId, isAuthenticated, queryClient);
 
   useEffect(() => {
     if (isAuthPage) {
+      setAuthError(null);
       setAuthCheckDone(true);
       return;
     }
 
     setAuthCheckDone(false);
+    setAuthError(null);
     let active = true;
     apiRequest<{
       id: number;
@@ -86,25 +90,55 @@ function RootComponent() {
         if (user.activeFamilyId && user.role) {
           setActiveFamily(user.activeFamilyId, user.role);
         }
+        setAuthError(null);
         setAuthCheckDone(true);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (!active) return;
-        logout();
+        if (err instanceof ApiError && err.status === 401) {
+          logout();
+          setAuthCheckDone(true);
+          navigate({ to: "/login", replace: true });
+          return;
+        }
+        setAuthError("Unable to verify session right now. Please retry.");
         setAuthCheckDone(true);
-        navigate({ to: "/login", replace: true });
       });
     return () => {
       active = false;
     };
-  }, [isAuthPage, login, logout, navigate, setActiveFamily]);
+  }, [isAuthPage, login, logout, navigate, setActiveFamily, authRetry]);
 
   return (
     <QueryClientProvider client={queryClient}>
       {isAuthPage ? (
         <Outlet />
+      ) : !authCheckDone ? (
+        <div className="min-h-screen grid place-items-center text-sm text-muted-foreground">Checking session...</div>
+      ) : authError ? (
+        <div className="min-h-screen grid place-items-center px-4">
+          <div className="rounded-2xl border-2 border-border bg-card p-6 text-center space-y-3 max-w-md w-full">
+            <p className="text-sm text-muted-foreground">{authError}</p>
+            <div className="flex gap-2 justify-center">
+              <button
+                type="button"
+                onClick={() => setAuthRetry((v) => v + 1)}
+                className="rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-bold"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/login", replace: true })}
+                className="rounded-xl bg-secondary px-4 py-2 text-sm font-bold"
+              >
+                Login
+              </button>
+            </div>
+          </div>
+        </div>
       ) : !isAuthenticated ? (
-        authCheckDone ? null : <div className="min-h-screen grid place-items-center text-sm text-muted-foreground">Checking session...</div>
+        <Outlet />
       ) : (
         <AppShell />
       )}
