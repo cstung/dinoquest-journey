@@ -5,6 +5,7 @@ import {
   Video,
   CalendarDays,
   Trophy,
+  Trees,
   Egg,
   Gift,
   Users,
@@ -33,6 +34,8 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const familyId = useFamilyStore((s) => s.activeFamilyId);
   const isSuperAdmin = user?.globalRole === "superadmin";
+  const familyYardActive =
+    familyId != null && pathname.startsWith(`/families/${familyId}/dashboard`);
   const leaderboard = useLeaderboard(familyId, "family");
   const myEntry = (leaderboard.data?.items ?? []).find((item) => item.isYou) ?? null;
   const progress = myEntry ? xpProgress(myEntry.xp, myEntry.level) : null;
@@ -63,6 +66,21 @@ export function Sidebar() {
             </Link>
           );
         })}
+        {familyId != null && (
+          <Link
+            to="/families/$familyId/dashboard"
+            params={{ familyId: String(familyId) }}
+            className={cn(
+              "flex items-center gap-3 px-4 py-3 rounded-2xl font-display font-extrabold text-sm transition-all border-2 border-transparent",
+              familyYardActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground border-primary/30"
+                : "text-sidebar-foreground hover:bg-sidebar-accent/50",
+            )}
+          >
+            <Trees className="size-5" strokeWidth={2.5} />
+            <span className="uppercase tracking-wide">Family Yard</span>
+          </Link>
+        )}
         {isSuperAdmin && (
           <Link
             to="/admin"
