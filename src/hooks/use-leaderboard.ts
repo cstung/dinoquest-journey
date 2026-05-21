@@ -8,6 +8,7 @@ export interface LeaderboardEntry {
   avatarColor: string | null;
   level: number;
   xp: number;
+  currentStreak: number;
   isYou: boolean;
 }
 

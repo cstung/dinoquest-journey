@@ -3,6 +3,7 @@ import { ListChecks, Trophy, Flame, ArrowRight, Sparkles } from "lucide-react";
 import { XPBar } from "@/components/xp-bar";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { useFamilyActivity, useFamilyDetail } from "@/hooks/use-families";
+import { useLeaderboard } from "@/hooks/use-leaderboard";
 import { usePets } from "@/hooks/use-pets";
 import { useQuests } from "@/hooks/use-quests";
 import { useTests } from "@/hooks/use-tests";
@@ -45,6 +46,7 @@ function HomePage() {
   const user = useAuthStore((s) => s.user);
   const activeFamilyId = useFamilyStore((s) => s.activeFamilyId);
   const familyQuery = useFamilyDetail(activeFamilyId);
+  const leaderboardQuery = useLeaderboard(activeFamilyId, "family");
   const questsQuery = useQuests(activeFamilyId, { status: "pending" });
   const testsQuery = useTests(activeFamilyId, { status: "all" });
   const activityQuery = useFamilyActivity(activeFamilyId, "activity", !!activeFamilyId);
@@ -79,6 +81,12 @@ function HomePage() {
   }
 
   const family = familyQuery.data;
+  const myEntry = (leaderboardQuery.data?.items ?? []).find((entry) => entry.isYou) ?? null;
+  const heroProgress = myEntry ? xpProgress(myEntry.xp, myEntry.level) : null;
+  const heroLevel = myEntry?.level ?? 1;
+  const heroCurrentXp = heroProgress?.current ?? 0;
+  const heroXpToNext = heroProgress?.required ?? 100;
+  const heroStreak = myEntry?.currentStreak ?? 0;
   const pendingQuests = questsQuery.data?.items ?? [];
   const tests = testsQuery.data?.items ?? [];
   const activity = activityQuery.data?.items ?? [];
@@ -114,12 +122,12 @@ function HomePage() {
           </div>
           <div className="flex items-center gap-2 bg-warning rounded-2xl px-4 py-2 shadow-pop-sm">
             <Flame className="size-5" />
-            <span className="font-display font-extrabold text-xl">{user.streak}</span>
+            <span className="font-display font-extrabold text-xl">{heroStreak}</span>
             <span className="font-bold text-sm uppercase">day streak</span>
           </div>
         </div>
         <div className="mt-6 bg-white/15 backdrop-blur rounded-2xl p-4">
-          <XPBar currentXP={user.xp} maxXP={user.xpToNext} level={user.level} />
+          <XPBar currentXP={heroCurrentXp} maxXP={heroXpToNext} level={heroLevel} />
         </div>
       </div>
 
@@ -274,4 +282,12 @@ function HomePage() {
       </div>
     </div>
   );
+}
+
+function xpProgress(totalXp: number, level: number): { current: number; required: number } {
+  const safeLevel = Math.max(level, 1);
+  const prevLevelsXp = (100 * (safeLevel - 1) * safeLevel) / 2;
+  const required = 100 * safeLevel;
+  const current = Math.max(0, Math.min(totalXp - prevLevelsXp, required));
+  return { current, required };
 }

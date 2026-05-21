@@ -10,6 +10,7 @@ class LeaderboardEntryOut(APIModel):
     avatar_color: str | None
     level: int
     xp: int
+    current_streak: int = 0
     is_you: bool
 
 

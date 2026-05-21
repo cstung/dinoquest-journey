@@ -31,6 +31,7 @@ async def get_leaderboard(
                 FamilyMember.avatar_color,
                 func.coalesce(UserFamilyLevel.level, 1),
                 func.coalesce(UserFamilyLevel.total_xp, 0),
+                func.coalesce(UserFamilyLevel.current_streak, 0),
             )
             .join(FamilyMember, FamilyMember.user_id == User.id)
             .outerjoin(
@@ -50,6 +51,7 @@ async def get_leaderboard(
                 func.min(FamilyMember.avatar_color),
                 func.coalesce(func.max(UserFamilyLevel.level), 1),
                 func.coalesce(func.sum(UserFamilyLevel.total_xp), 0),
+                func.coalesce(func.max(UserFamilyLevel.current_streak), 0),
             )
             .join(FamilyMember, FamilyMember.user_id == User.id)
             .outerjoin(UserFamilyLevel, UserFamilyLevel.user_id == User.id)
@@ -60,7 +62,7 @@ async def get_leaderboard(
         raw = rows.all()
 
     items: list[LeaderboardEntryOut] = []
-    for index, (user_id, username, avatar_color, level, xp) in enumerate(raw, start=1):
+    for index, (user_id, username, avatar_color, level, xp, current_streak) in enumerate(raw, start=1):
         items.append(
             LeaderboardEntryOut(
                 rank=index,
@@ -69,6 +71,7 @@ async def get_leaderboard(
                 avatar_color=avatar_color,
                 level=int(level),
                 xp=int(xp),
+                current_streak=int(current_streak),
                 is_you=user_id == membership.user_id,
             )
         )
