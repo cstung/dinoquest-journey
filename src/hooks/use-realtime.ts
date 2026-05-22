@@ -70,6 +70,7 @@ export function useFamilyRealtime(
             msg.event === "xp_earned"
           ) {
             queryClient.invalidateQueries({ queryKey: ["quests", familyId] });
+            queryClient.invalidateQueries({ queryKey: ["family-activity", "activity", familyId] });
           }
           if (
             msg.event === "test_assigned" ||
@@ -78,13 +79,19 @@ export function useFamilyRealtime(
             msg.event === "reopen_resolved"
           ) {
             queryClient.invalidateQueries({ queryKey: ["tests", familyId] });
+            queryClient.invalidateQueries({ queryKey: ["family-activity", "activity", familyId] });
           }
           if (msg.event === "pet_updated") {
             queryClient.invalidateQueries({ queryKey: ["pets", familyId] });
           }
-          if (msg.event === "reward_updated" || msg.event === "reward_claimed" || msg.event === "reward_claim_resolved") {
+          if (
+            msg.event === "reward_updated" ||
+            msg.event === "reward_claimed" ||
+            msg.event === "reward_claim_resolved"
+          ) {
             queryClient.invalidateQueries({ queryKey: ["rewards", familyId] });
             queryClient.invalidateQueries({ queryKey: ["reward-claims", familyId] });
+            queryClient.invalidateQueries({ queryKey: ["family-activity", "activity", familyId] });
           }
         };
         ws.onclose = () => {

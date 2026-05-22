@@ -719,6 +719,21 @@ async def resolve_quest_assignment(
             source_id=assignment.id,
             db=db,
         )
+        db.add(
+            ActivityLog(
+                family_id=assignment.family_id,
+                user_id=assignment.user_id,
+                event_type="quest_completed",
+                payload={
+                    "quest_id": quest.id,
+                    "quest_title": quest.title,
+                    "xp": quest.xp_reward,
+                    "assignment_id": assignment.id,
+                    "cycle_index": assignment.cycle_index,
+                },
+                is_audit=False,
+            )
+        )
         total_xp = level_row.total_xp
         level = level_row.level
         event_action = "completion_approved"
