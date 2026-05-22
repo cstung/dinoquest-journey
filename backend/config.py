@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     whisper_model: str = "whisper-1"
     test_transcript_max_chars: int = 12000
+    subtitle_title_timeout_seconds: float = 4.0
+    subtitle_fetch_timeout_seconds: float = 6.0
     vapid_private_key: str = ""
     vapid_public_key: str = ""
     vapid_claims_email: str = "admin@dinoquest.local"

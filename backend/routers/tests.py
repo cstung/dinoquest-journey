@@ -50,10 +50,20 @@ from backend.services.quiz_generator import (
     generate_quiz_questions,
     generate_single_quiz_question,
 )
-from backend.services.subtitle_service import build_subtitle_payload
+from backend.services.subtitle_service import (
+    SubtitleUnavailableError,
+    build_subtitle_payload,
+)
 from backend.services.xp_engine import award_xp
 
 router = APIRouter()
+
+
+def _subtitle_http_error(exc: SubtitleUnavailableError) -> HTTPException:
+    return HTTPException(
+        status_code=422,
+        detail=str(exc) or "No subtitles are available for this video.",
+    )
 
 
 def _parse_cursor(cursor: str | None) -> datetime | None:
@@ -213,7 +223,10 @@ async def preview_test(
     db: AsyncSession = Depends(get_db),
 ) -> TestPreviewOut:
     del db
-    subtitle = await build_subtitle_payload(body.youtube_url)
+    try:
+        subtitle = await build_subtitle_payload(body.youtube_url)
+    except SubtitleUnavailableError as exc:
+        raise _subtitle_http_error(exc) from exc
     questions = await generate_quiz_questions(
         transcript=subtitle.raw_transcript,
         title=subtitle.title,
@@ -243,7 +256,10 @@ async def preview_subtitle(
 ) -> TestSubtitlePreviewOut:
     del parent_member
     del db
-    subtitle = await build_subtitle_payload(body.youtube_url)
+    try:
+        subtitle = await build_subtitle_payload(body.youtube_url)
+    except SubtitleUnavailableError as exc:
+        raise _subtitle_http_error(exc) from exc
     words = len(subtitle.raw_transcript.split())
     preview = subtitle.raw_transcript[:360] + ("..." if len(subtitle.raw_transcript) > 360 else "")
     return TestSubtitlePreviewOut(

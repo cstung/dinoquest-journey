@@ -5,6 +5,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import urlopen
 
@@ -16,6 +17,10 @@ except Exception:  # pragma: no cover - optional dependency fallback
     YouTubeTranscriptApi = None  # type: ignore
 
 logger = logging.getLogger(__name__)
+
+
+class SubtitleUnavailableError(RuntimeError):
+    pass
 
 
 @dataclass(slots=True)
@@ -77,6 +82,13 @@ def _normalize_transcript_segments(items) -> str:
     return " ".join(parts).strip()
 
 
+def _iter_transcripts(transcript_list: Any) -> list[Any]:
+    try:
+        return list(transcript_list)
+    except Exception:
+        return []
+
+
 def _api_client():
     # v1.x exposes an instance API, older versions used class/static methods.
     try:
@@ -91,6 +103,40 @@ def _fetch_from_transcript_obj(transcript_obj, source: str) -> tuple[str, str]:
     if not text:
         raise RuntimeError("Transcript fetch returned empty content")
     return text, source
+
+
+def _fetch_generated_transcript_any_language(transcript_list: Any) -> tuple[str, str]:
+    generated_tracks = [
+        transcript
+        for transcript in _iter_transcripts(transcript_list)
+        if bool(getattr(transcript, "is_generated", False))
+    ]
+
+    # First prefer direct english generated captions.
+    for transcript in generated_tracks:
+        if str(getattr(transcript, "language_code", "")).lower() == "en":
+            try:
+                return _fetch_from_transcript_obj(transcript, "youtube_auto")
+            except Exception:
+                continue
+
+    # Then generated captions translated to english where supported.
+    for transcript in generated_tracks:
+        if bool(getattr(transcript, "is_translatable", False)):
+            try:
+                translated = transcript.translate("en")
+                return _fetch_from_transcript_obj(translated, "youtube_translated")
+            except Exception:
+                continue
+
+    # Finally, accept non-english generated captions as-is.
+    for transcript in generated_tracks:
+        try:
+            return _fetch_from_transcript_obj(transcript, "youtube_auto")
+        except Exception:
+            continue
+
+    raise SubtitleUnavailableError("Auto-generated subtitles are not available for this video.")
 
 
 def _fetch_transcript_sync(video_id: str) -> tuple[str, str]:
@@ -132,6 +178,10 @@ def _fetch_transcript_sync(video_id: str) -> tuple[str, str]:
             return _fetch_from_transcript_obj(translated.translate("en"), "youtube_translated")
         except Exception:
             pass
+        try:
+            return _fetch_generated_transcript_any_language(transcript_list)
+        except Exception:
+            pass
 
     # v1.x direct API.
     try:
@@ -146,37 +196,65 @@ def _fetch_transcript_sync(video_id: str) -> tuple[str, str]:
     # Compatibility fallback for older API surface.
     try:
         rows = api.get_transcript(video_id, languages=["en"])  # type: ignore[attr-defined]
-        return _normalize_transcript_segments(rows), "youtube_auto"
+        text = _normalize_transcript_segments(rows)
+        if text:
+            return text, "youtube_auto"
     except Exception as exc:
-        raise RuntimeError("Unable to fetch transcript from YouTube") from exc
+        raise SubtitleUnavailableError("No subtitles are available for this video.") from exc
+
+    raise SubtitleUnavailableError("No subtitles are available for this video.")
+
+
+async def _run_in_thread_with_timeout(func, timeout_seconds: float, *args):
+    return await asyncio.wait_for(
+        asyncio.to_thread(func, *args),
+        timeout=timeout_seconds,
+    )
 
 
 async def build_subtitle_payload(youtube_url: str) -> SubtitlePayload:
     settings = get_settings()
-    video_id = extract_video_id(youtube_url)
-    title = await asyncio.to_thread(_fetch_video_title, youtube_url)
+    try:
+        video_id = extract_video_id(youtube_url)
+    except ValueError as exc:
+        raise SubtitleUnavailableError("Invalid YouTube URL.") from exc
+
+    try:
+        title = await _run_in_thread_with_timeout(
+            _fetch_video_title,
+            settings.subtitle_title_timeout_seconds,
+            youtube_url,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "subtitle title lookup timed out for %s after %.1fs",
+            youtube_url,
+            settings.subtitle_title_timeout_seconds,
+        )
+        title = None
     if not title:
         title = _fallback_title(video_id)
     thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
-    transcript = ""
-    subtitle_source = "fallback_local"
+
     try:
-        transcript, subtitle_source = await asyncio.to_thread(_fetch_transcript_sync, video_id)
+        transcript, subtitle_source = await _run_in_thread_with_timeout(
+            _fetch_transcript_sync,
+            settings.subtitle_fetch_timeout_seconds,
+            video_id,
+        )
+    except asyncio.TimeoutError as exc:
+        raise SubtitleUnavailableError(
+            "Subtitle fetch timed out. Try another video or retry later."
+        ) from exc
+    except SubtitleUnavailableError:
+        raise
     except Exception as exc:
         logger.warning("subtitle fetch failed for %s (%s): %s", youtube_url, video_id, exc)
-        transcript = ""
-
-    if not transcript:
-        # Deterministic fallback keeps preview flow available offline.
-        transcript = (
-            f"{title} explains a science concept in short steps. "
-            "The presenter introduces the main topic, gives examples, and summarizes key facts. "
-            "Children are encouraged to observe, predict outcomes, and explain what they learned. "
-            "Important terms are repeated to improve memory and build confidence."
-        )
-        subtitle_source = "fallback_local"
+        raise SubtitleUnavailableError("No subtitles are available for this video.") from exc
 
     transcript = transcript[: settings.test_transcript_max_chars].strip()
+    if not transcript:
+        raise SubtitleUnavailableError("No subtitles are available for this video.")
 
     return SubtitlePayload(
         title=title,

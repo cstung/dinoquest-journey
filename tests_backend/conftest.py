@@ -16,6 +16,8 @@ def _prepare_env(tmp_path: Path) -> None:
     os.environ["SECRET_KEY"] = "test-secret-key-1234567890"
     os.environ["DB_PATH"] = str(db_path)
     os.environ["ALLOWED_ORIGINS"] = '["http://localhost:3000","http://localhost:5173"]'
+    os.environ["SUBTITLE_TITLE_TIMEOUT_SECONDS"] = "1.5"
+    os.environ["SUBTITLE_FETCH_TIMEOUT_SECONDS"] = "2.5"
 
 
 @pytest.fixture(scope="session")

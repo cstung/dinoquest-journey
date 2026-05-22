@@ -92,12 +92,31 @@ def test_auth_invite_join_flow(client: TestClient) -> None:
 def test_testmaker_reopen_revokes_and_reawards_xp(client: TestClient) -> None:
     family_id, child_user_id, child_client = _setup_family_with_child(client)
 
-    preview = client.post(
-        f"/api/families/{family_id}/tests/preview",
-        json={"youtubeUrl": "https://www.youtube.com/watch?v=ZCkn3l_RtgU", "questionCount": 5},
+    transcript = (
+        "Dinosaurs lived in different periods. "
+        "The T-Rex was a carnivore with powerful jaws. "
+        "Fossils help scientists learn about ancient life. "
+        "Paleontologists compare bones to understand behavior."
     )
-    assert preview.status_code == 200, preview.text
-    payload = preview.json()
+    question_preview = client.post(
+        f"/api/families/{family_id}/tests/preview/questions",
+        json={
+            "title": "Dinosaur Basics",
+            "rawTranscript": transcript,
+            "questionCount": 5,
+            "difficulty": "medium",
+        },
+    )
+    assert question_preview.status_code == 200, question_preview.text
+    payload = {
+        "title": "Dinosaur Basics",
+        "youtubeUrl": "https://www.youtube.com/watch?v=ZCkn3l_RtgU",
+        "videoId": "ZCkn3l_RtgU",
+        "thumbnailUrl": "https://img.youtube.com/vi/ZCkn3l_RtgU/hqdefault.jpg",
+        "subtitleSource": "youtube_manual",
+        "rawTranscript": transcript,
+        "questions": question_preview.json()["questions"],
+    }
 
     created = client.post(
         f"/api/families/{family_id}/tests",
@@ -197,3 +216,24 @@ def test_websocket_receives_reward_claim_resolution_event(client: TestClient) ->
         event = websocket.receive_json()
         assert event["event"] == "reward_claim_resolved"
         assert event["payload"]["claimId"] == claim_id
+
+
+def test_preview_subtitle_returns_422_when_unavailable(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    family_id, _, _ = _setup_family_with_child(client)
+
+    from backend.routers import tests as tests_router
+    from backend.services.subtitle_service import SubtitleUnavailableError
+
+    async def _raise_unavailable(_: str):
+        raise SubtitleUnavailableError("No subtitles are available for this video.")
+
+    monkeypatch.setattr(tests_router, "build_subtitle_payload", _raise_unavailable)
+    response = client.post(
+        f"/api/families/{family_id}/tests/preview/subtitle",
+        json={"youtubeUrl": "https://www.youtube.com/watch?v=ZCkn3l_RtgU"},
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == "No subtitles are available for this video."
