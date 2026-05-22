@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime
 from enum import Enum
-from zoneinfo import ZoneInfo
 
 from pydantic import Field, field_validator
 
 from backend.base_schema import APIModel
+from backend.datetime_utils import VN_TZ, ensure_utc, vn_end_of_day_utc, vn_today
 
 
 class QuestFrequency(str, Enum):
@@ -55,12 +55,29 @@ class QuestCreate(APIModel):
     def validate_due_date_not_past(cls, value: datetime | None) -> datetime | None:
         if value is None:
             return None
-        due = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-        now_local_date = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
-        due_local_date = due.astimezone(ZoneInfo("Asia/Ho_Chi_Minh")).date()
-        if due_local_date < now_local_date:
+        due_local_date = ensure_utc(value).astimezone(VN_TZ).date()
+        if due_local_date < vn_today():
             raise ValueError("Due date cannot be in the past.")
-        return due
+        return ensure_utc(value)
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def parse_due_date(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        if isinstance(value, datetime):
+            return ensure_utc(value)
+        if isinstance(value, date):
+            return vn_end_of_day_utc(value)
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return None
+            if "T" not in raw and " " not in raw:
+                return vn_end_of_day_utc(date.fromisoformat(raw))
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            return ensure_utc(parsed)
+        raise ValueError("due_date must be a valid ISO date or datetime")
 
 
 class QuestUpdate(APIModel):
@@ -83,6 +100,11 @@ class QuestUpdate(APIModel):
     @classmethod
     def validate_update_due_date_not_past(cls, value: datetime | None) -> datetime | None:
         return QuestCreate.validate_due_date_not_past(value)
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def parse_update_due_date(cls, value: object) -> object:
+        return QuestCreate.parse_due_date(value)
 
 
 class QuestCompleteOut(APIModel):

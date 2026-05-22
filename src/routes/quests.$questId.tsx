@@ -10,10 +10,7 @@ import {
 import { ArrowLeft, Calendar, Award, Zap, Repeat, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
-import {
-  getQuestCategoryLabel,
-  getQuestCategoryOptionsWithFallback,
-} from "@/lib/quest-categories";
+import { getQuestCategoryLabel, getQuestCategoryOptionsWithFallback } from "@/lib/quest-categories";
 
 export const Route = createFileRoute("/quests/$questId")({ component: QuestDetail });
 
@@ -44,9 +41,7 @@ function QuestDetail() {
   const [frequency, setFrequency] = useState<QuestFrequency>("once");
   const [recurrenceEndAt, setRecurrenceEndAt] = useState("");
   const quest = query.data;
-  const myAssignment =
-    quest?.assignedMembers.find((m) => m.userId === currentUserId) ??
-    null;
+  const myAssignment = quest?.assignedMembers.find((m) => m.userId === currentUserId) ?? null;
   const completeMutation = useCompleteQuest(familyId, myAssignment?.assignmentId ?? null);
 
   useEffect(() => {
@@ -112,10 +107,10 @@ function QuestDetail() {
         category: normalizeQuestCategory(category),
         difficulty,
         xpReward,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        dueDate: dueDate ? dateInputToUtcEndOfDay(dueDate) : null,
         frequency,
         recurrenceEndAt:
-          frequency !== "once" && recurrenceEndAt ? new Date(recurrenceEndAt).toISOString() : null,
+          frequency !== "once" && recurrenceEndAt ? dateInputToUtcEndOfDay(recurrenceEndAt) : null,
       });
       await query.refetch();
       setEditMode(false);
@@ -279,7 +274,9 @@ function QuestDetail() {
                 <div>
                   <div className="text-xs font-bold text-muted-foreground uppercase">Due</div>
                   <div className="font-bold">
-                    {new Date((myAssignment?.cycleDueAt ?? quest.dueDate) as string).toLocaleDateString()}
+                    {new Date(
+                      (myAssignment?.cycleDueAt ?? quest.dueDate) as string,
+                    ).toLocaleDateString()}
                   </div>
                 </div>
               </div>
@@ -380,10 +377,14 @@ function QuestDetail() {
   );
 }
 
-const selectCls = "rounded-xl border-2 border-border bg-background px-3 py-2 pr-10 font-bold disabled:opacity-60";
+const selectCls =
+  "rounded-xl border-2 border-border bg-background px-3 py-2 pr-10 font-bold disabled:opacity-60";
 
 function normalizeQuestCategory(value: string): string {
   return value.trim().toLowerCase() || "custom";
 }
 
-
+function dateInputToUtcEndOfDay(value: string): string {
+  // VN business-day end (UTC+7) represented in UTC.
+  return `${value}T16:59:59.999Z`;
+}

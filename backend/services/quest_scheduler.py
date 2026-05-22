@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, or_, select, update as sa_update
 
+from backend.datetime_utils import ensure_utc, ensure_utc_optional
 from backend.models import ActivityLog, Quest, QuestAssignment
 from backend.realtime import emit_family_event
 from backend.database import SessionLocal
@@ -21,9 +22,7 @@ def midnight_vn(d: date) -> datetime:
 
 
 def _as_utc(dt: datetime) -> datetime:
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+    return ensure_utc(dt)
 
 
 def _monthly_anchor_day(from_dt: datetime, monthly_anchor_day: int | None) -> int:
@@ -96,6 +95,7 @@ def compute_cycle_due_at(
         23,
         59,
         59,
+        999999,
         tzinfo=TZ,
     ).astimezone(UTC)
 
@@ -117,6 +117,12 @@ async def _mark_overdue_assignments(
 
     missed_events: list[tuple[int, int, str]] = []
     for assignment, quest in overdue_pairs:
+        completed_at_utc = ensure_utc_optional(assignment.completed_at)
+        cycle_start_utc = ensure_utc_optional(assignment.cycle_start_at)
+        if completed_at_utc is not None and cycle_start_utc is not None and completed_at_utc >= cycle_start_utc:
+            # Skip overdue transition when the cycle was already completed in this cycle window.
+            continue
+
         transition = await db.execute(
             sa_update(QuestAssignment)
             .where(

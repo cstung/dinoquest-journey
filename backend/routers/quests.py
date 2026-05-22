@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import and_, delete as sa_delete, func, or_, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
+from backend.datetime_utils import VN_TZ, ensure_utc, vn_end_of_day_utc
 from backend.dependencies import get_active_membership, get_current_user, require_parent
 from backend.models import ActivityLog, FamilyMember, Quest, QuestAssignment, User
 from backend.realtime import emit_family_event
@@ -27,7 +27,6 @@ from backend.services.streak_service import update_streak
 from backend.services.xp_engine import award_xp
 
 router = APIRouter()
-VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
 def _parse_cursor(cursor: str | None) -> datetime | None:
@@ -42,9 +41,30 @@ def _parse_cursor(cursor: str | None) -> datetime | None:
 def _as_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+    return ensure_utc(dt)
+
+
+def _normalize_due_date_for_day_boundary(dt: datetime | None) -> datetime | None:
+    due_utc = _as_utc(dt)
+    if due_utc is None:
+        return None
+    due_local = due_utc.astimezone(VN_TZ)
+    if (
+        (
+            due_utc.hour == 0
+            and due_utc.minute == 0
+            and due_utc.second == 0
+            and due_utc.microsecond == 0
+        )
+        or (
+            due_local.hour == 0
+            and due_local.minute == 0
+            and due_local.second == 0
+            and due_local.microsecond == 0
+        )
+    ):
+        return vn_end_of_day_utc(due_local.date())
+    return due_utc
 
 
 def _monthly_anchor_day(base_dt: datetime) -> int:
@@ -235,6 +255,7 @@ async def create_quest(
 ) -> QuestItemOut:
     now_utc = datetime.now(timezone.utc)
     frequency_value = body.frequency.value
+    due_date_utc = _normalize_due_date_for_day_boundary(body.due_date)
     recurrence_anchor_day = _monthly_anchor_day(now_utc) if frequency_value == QuestFrequency.monthly.value else None
     next_occurrence_at = compute_next_occurrence(
         frequency_value,
@@ -251,7 +272,7 @@ async def create_quest(
         difficulty=body.difficulty,
         thumbnail_url=body.thumbnail_url,
         xp_reward=body.xp_reward,
-        due_date=body.due_date,
+        due_date=due_date_utc,
         frequency=frequency_value,
         next_occurrence_at=next_occurrence_at,
         recurrence_end_at=body.recurrence_end_at,
@@ -260,29 +281,23 @@ async def create_quest(
     db.add(quest)
     await db.flush()
 
-    if body.assigned_user_ids:
-        target_ids = sorted(set(body.assigned_user_ids))
-        member_rows = await db.execute(
-            select(FamilyMember).where(
-                FamilyMember.family_id == parent_member.family_id,
-                FamilyMember.user_id.in_(target_ids),
-            )
+    if not body.assigned_user_ids:
+        raise HTTPException(status_code=400, detail="Please select at least one child to assign this quest.")
+    target_ids = sorted(set(body.assigned_user_ids))
+    member_rows = await db.execute(
+        select(FamilyMember).where(
+            FamilyMember.family_id == parent_member.family_id,
+            FamilyMember.role == "child",
+            FamilyMember.user_id.in_(target_ids),
         )
-        members = member_rows.scalars().all()
-        if len(members) != len(target_ids):
-            raise HTTPException(status_code=400, detail="One or more assigned users are not in this family")
-        assignees = members
-    else:
-        member_rows = await db.execute(
-            select(FamilyMember).where(
-                FamilyMember.family_id == parent_member.family_id,
-                FamilyMember.role == "child",
-            )
-        )
-        assignees = member_rows.scalars().all()
+    )
+    members = member_rows.scalars().all()
+    if len(members) != len(target_ids):
+        raise HTTPException(status_code=400, detail="One or more assigned users are invalid or not a child in this family")
+    assignees = members
 
     cycle_due = (
-        body.due_date
+        due_date_utc
         if frequency_value == "once"
         else compute_cycle_due_at(
             frequency_value,
@@ -385,7 +400,8 @@ async def update_quest(
     if body.xp_reward is not None:
         quest.xp_reward = body.xp_reward
     if "due_date" in body.model_fields_set:
-        quest.due_date = body.due_date
+        normalized_due_date = _normalize_due_date_for_day_boundary(body.due_date)
+        quest.due_date = normalized_due_date
         if quest.frequency == QuestFrequency.once.value:
             await db.execute(
                 sa_update(QuestAssignment)
@@ -393,7 +409,7 @@ async def update_quest(
                     QuestAssignment.quest_id == quest.id,
                     QuestAssignment.status.in_(["pending", "pending_approval"]),
                 )
-                .values(cycle_due_at=body.due_date)
+                .values(cycle_due_at=normalized_due_date)
                 .execution_options(synchronize_session=False)
             )
     if "recurrence_end_at" in body.model_fields_set:

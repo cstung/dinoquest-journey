@@ -5,10 +5,7 @@ import { cn } from "@/lib/utils";
 import { useFamilyStore } from "@/store";
 import { type QuestFrequency, useCreateQuest } from "@/hooks/use-quests";
 import { useFamilyMembers } from "@/hooks/use-families";
-import {
-  getQuestCategoryLabel,
-  getQuestCategoryOptionsWithFallback,
-} from "@/lib/quest-categories";
+import { getQuestCategoryLabel, getQuestCategoryOptionsWithFallback } from "@/lib/quest-categories";
 
 export const Route = createFileRoute("/quests/new")({ component: NewQuest });
 
@@ -44,6 +41,10 @@ function NewQuest() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (assignedUserIds.length === 0) {
+      setError("Please choose at least one child to assign this quest.");
+      return;
+    }
     if (dueDate && isPastDateInput(dueDate)) {
       setError("Due date cannot be in the past.");
       return;
@@ -56,11 +57,11 @@ function NewQuest() {
         difficulty,
         thumbnailUrl,
         xpReward,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        dueDate: dueDate ? dateInputToUtcEndOfDay(dueDate) : null,
         frequency,
         recurrenceEndAt:
-          frequency !== "once" && recurrenceEndAt ? new Date(recurrenceEndAt).toISOString() : null,
-        assignedUserIds: assignedUserIds.length ? assignedUserIds : undefined,
+          frequency !== "once" && recurrenceEndAt ? dateInputToUtcEndOfDay(recurrenceEndAt) : null,
+        assignedUserIds,
       });
       nav({ to: "/quests/$questId", params: { questId: String(created.id) } });
     } catch (err) {
@@ -69,12 +70,17 @@ function NewQuest() {
   };
 
   const toggleAssign = (id: number) => {
-    setAssignedUserIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setAssignedUserIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   };
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <Link to="/quests" className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground">
+      <Link
+        to="/quests"
+        className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground"
+      >
         <ArrowLeft className="size-4" /> Back
       </Link>
       <h1 className="text-3xl">Create a Quest</h1>
@@ -107,7 +113,11 @@ function NewQuest() {
             )}
           >
             {thumbnailUrl ? (
-              <img src={thumbnailUrl} alt="Quest thumbnail preview" className="size-full object-cover" />
+              <img
+                src={thumbnailUrl}
+                alt="Quest thumbnail preview"
+                className="size-full object-cover"
+              />
             ) : (
               "🎯"
             )}
@@ -117,7 +127,12 @@ function NewQuest() {
           </div>
         </div>
         <Field label="Title">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} placeholder="Read for 20 minutes" />
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className={inputCls}
+            placeholder="Read for 20 minutes"
+          />
         </Field>
         <Field label="Description">
           <textarea
@@ -130,7 +145,11 @@ function NewQuest() {
         </Field>
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Category">
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className={selectCls}>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className={selectCls}
+            >
               {getQuestCategoryOptionsWithFallback(category).map((value) => (
                 <option key={value} value={value}>
                   {getQuestCategoryLabel(value)}
@@ -139,7 +158,11 @@ function NewQuest() {
             </select>
           </Field>
           <Field label="Difficulty">
-            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className={selectCls}>
+            <select
+              value={difficulty}
+              onChange={(e) => setDifficulty(e.target.value)}
+              className={selectCls}
+            >
               <option>Easy</option>
               <option>Medium</option>
               <option>Hard</option>
@@ -156,10 +179,19 @@ function NewQuest() {
             />
           </Field>
           <Field label={frequency === "once" ? "Due Date" : "First Due Date"}>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className={inputCls}
+            />
           </Field>
           <Field label="Frequency">
-            <select value={frequency} onChange={(e) => setFrequency(e.target.value as QuestFrequency)} className={selectCls}>
+            <select
+              value={frequency}
+              onChange={(e) => setFrequency(e.target.value as QuestFrequency)}
+              className={selectCls}
+            >
               <option value="once">One time</option>
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
@@ -178,10 +210,13 @@ function NewQuest() {
           )}
         </div>
 
-        <Field label="Assign To Children (optional)">
+        <Field label="Assign To Children">
           <div className="grid grid-cols-2 gap-2">
             {childMembers.map((m) => (
-              <label key={m.userId} className="flex items-center gap-2 rounded-xl border-2 border-border px-3 py-2">
+              <label
+                key={m.userId}
+                className="flex items-center gap-2 rounded-xl border-2 border-border px-3 py-2"
+              >
                 <input
                   type="checkbox"
                   checked={assignedUserIds.includes(m.userId)}
@@ -192,7 +227,9 @@ function NewQuest() {
               </label>
             ))}
             {childMembers.length === 0 && (
-              <div className="text-sm text-muted-foreground">No children found. If left empty, backend assigns to all children.</div>
+              <div className="text-sm text-muted-foreground">
+                No children found. Add a child member before creating quests.
+              </div>
             )}
           </div>
         </Field>
@@ -206,7 +243,10 @@ function NewQuest() {
           >
             {createQuest.isPending ? "Creating..." : "Create Quest"}
           </button>
-          <Link to="/quests" className="rounded-2xl bg-secondary font-display font-extrabold uppercase px-6 py-3.5 grid place-items-center">
+          <Link
+            to="/quests"
+            className="rounded-2xl bg-secondary font-display font-extrabold uppercase px-6 py-3.5 grid place-items-center"
+          >
             Cancel
           </Link>
         </div>
@@ -248,6 +288,11 @@ function shortenFileName(name: string): string {
   return `${base.slice(0, 3)}...${base.slice(-4)}${ext}`;
 }
 
+function dateInputToUtcEndOfDay(value: string): string {
+  // VN business-day end (UTC+7) represented in UTC.
+  return `${value}T16:59:59.999Z`;
+}
+
 function isPastDateInput(value: string): boolean {
   const selected = new Date(value);
   selected.setHours(0, 0, 0, 0);
@@ -256,7 +301,8 @@ function isPastDateInput(value: string): boolean {
   return selected < today;
 }
 
-const inputCls = "w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary";
+const inputCls =
+  "w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-primary";
 const selectCls = `${inputCls} pr-10 disabled:opacity-60`;
 
 function normalizeQuestCategory(value: string): string {
@@ -266,7 +312,9 @@ function normalizeQuestCategory(value: string): string {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
       {children}
     </label>
   );
