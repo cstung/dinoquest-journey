@@ -60,9 +60,15 @@ router = APIRouter()
 
 
 def _subtitle_http_error(exc: SubtitleUnavailableError) -> HTTPException:
+    status_code = 422
+    if getattr(exc, "code", "") in {"network_policy_blocked", "network_timeout", "dependency_missing"}:
+        status_code = 503
     return HTTPException(
-        status_code=422,
-        detail=str(exc) or "No subtitles are available for this video.",
+        status_code=status_code,
+        detail={
+            "msg": str(exc) or "No subtitles are available for this video.",
+            "code": getattr(exc, "code", "subtitle_unavailable"),
+        },
     )
 
 

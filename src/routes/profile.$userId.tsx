@@ -229,7 +229,7 @@ function daysUntilBirthday(iso: string | null): number | null {
 
 function eventText(ev: ActivityEv): { icon: string; text: string; color: string } {
   const questTitle = ev.payload.quest_title ?? ev.payload.title ?? "a quest";
-  const testTitle = ev.payload.test_title ?? ev.payload.title ?? "a test";
+  const testTitle = ev.payload.test_title ?? ev.payload.title ?? "a video quiz";
   const score = ev.payload.score ?? ev.payload.score_pct ?? 0;
   switch (ev.event_type) {
     case "quest_completed":
@@ -592,11 +592,11 @@ function KidProfilePage() {
               <SectionHeader icon={<Sparkles className="size-5" />} title="Stats" />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <StatTile icon={<ListChecks className="size-5" />} label="Quests Completed" value={stats.total_quests_completed} accent="bg-success/15 text-success-foreground" />
-                <StatTile icon={<Video className="size-5" />} label="Tests Taken" value={stats.total_tests_completed} accent="bg-info/15 text-info" />
+                <StatTile icon={<Video className="size-5" />} label="Video Quizzes Taken" value={stats.total_tests_completed} accent="bg-info/15 text-info" />
                 <StatTile icon={<Flame className="size-5" />} label="Current Streak" value={`${stats.current_streak_days} days`} accent="bg-warning/15 text-warning-foreground" />
                 <StatTile
                   icon={<Trophy className="size-5" />}
-                  label="Best Test Score"
+                  label="Best Video Quiz Score"
                   value={stats.best_test_score_pct == null ? "—" : `${stats.best_test_score_pct}%`}
                   accent="bg-purple/15 text-purple"
                 />
@@ -606,7 +606,7 @@ function KidProfilePage() {
             {/* Section 2 — Bio */}
             <BioSection profile={resolvedProfile} isSelf={isSelf} />
 
-            {/* Section 7 — Quest & Test Summary */}
+            {/* Section 7 — Quest & Video Quiz Summary */}
             <QuestTestSummary stats={stats} />
 
             {/* Section 6 — Medals */}
@@ -908,7 +908,7 @@ function MedalShowcase({ earned, locked }: { earned: Achievement[]; locked: Achi
       <SectionHeader icon={<Trophy className="size-5" />} title="Medals & Achievements" caption={`${earned.length} earned`} />
       {earned.length === 0 && (
         <div className="text-sm text-muted-foreground text-center py-6">
-          Complete quests and tests to earn your first medal!
+          Complete quests and video quizzes to earn your first medal!
         </div>
       )}
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
@@ -965,7 +965,7 @@ function QuestTestSummary({ stats }: { stats: Stats }) {
       <Tabs defaultValue="quests">
         <TabsList className="rounded-xl">
           <TabsTrigger value="quests" className="rounded-lg font-display font-extrabold uppercase text-xs">Quests</TabsTrigger>
-          <TabsTrigger value="tests" className="rounded-lg font-display font-extrabold uppercase text-xs">Tests</TabsTrigger>
+          <TabsTrigger value="tests" className="rounded-lg font-display font-extrabold uppercase text-xs">Video Quizzes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="quests" className="space-y-4">
@@ -989,11 +989,11 @@ function QuestTestSummary({ stats }: { stats: Stats }) {
 
         <TabsContent value="tests" className="space-y-4">
           {stats.total_tests_completed === 0 ? (
-            <div className="text-sm text-muted-foreground text-center py-8">No tests completed yet</div>
+            <div className="text-sm text-muted-foreground text-center py-8">No video quizzes completed yet</div>
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <MiniStat label="Tests Taken" value={stats.total_tests_completed} />
+                <MiniStat label="Video Quizzes Taken" value={stats.total_tests_completed} />
                 <MiniStat label="Average Score" value={`${stats.avg_test_score_pct}%`} />
                 <MiniStat label="Perfect Scores" value={stats.perfect_scores_count} />
               </div>
@@ -1264,5 +1264,4 @@ function ConfettiStrip() {
     </div>
   );
 }
-
 

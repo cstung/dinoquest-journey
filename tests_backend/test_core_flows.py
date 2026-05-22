@@ -236,4 +236,32 @@ def test_preview_subtitle_returns_422_when_unavailable(
         json={"youtubeUrl": "https://www.youtube.com/watch?v=ZCkn3l_RtgU"},
     )
     assert response.status_code == 422, response.text
-    assert response.json()["detail"] == "No subtitles are available for this video."
+    detail = response.json()["detail"]
+    assert detail["msg"] == "No subtitles are available for this video."
+    assert detail["code"] == "subtitle_unavailable"
+
+
+def test_preview_subtitle_returns_503_with_network_policy_notice(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    family_id, _, _ = _setup_family_with_child(client)
+
+    from backend.routers import tests as tests_router
+    from backend.services.subtitle_service import SubtitleUnavailableError
+
+    async def _raise_blocked(_: str):
+        raise SubtitleUnavailableError(
+            "Could not fetch YouTube subtitles from this server. The video may have captions, but outbound access may be blocked by firewall/proxy/network policy or cloud-IP restrictions.",
+            code="network_policy_blocked",
+        )
+
+    monkeypatch.setattr(tests_router, "build_subtitle_payload", _raise_blocked)
+    response = client.post(
+        f"/api/families/{family_id}/tests/preview/subtitle",
+        json={"youtubeUrl": "https://www.youtube.com/watch?v=ZCkn3l_RtgU"},
+    )
+    assert response.status_code == 503, response.text
+    detail = response.json()["detail"]
+    assert detail["code"] == "network_policy_blocked"
+    assert "network policy" in detail["msg"].lower()

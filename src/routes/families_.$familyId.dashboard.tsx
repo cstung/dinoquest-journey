@@ -842,7 +842,7 @@ function StatsSnapshot({ stats }: { stats: DashboardStats }) {
       <Tile icon={<Sparkles className="size-5 text-success-foreground" />} label="Quests this week" value={stats.questsCompletedThisWeek ?? 0} color="bg-success/20" />
       <Tile icon={<Star className="size-5 text-warning-foreground" />} label="Family XP" value={stats.familyXpThisWeek ?? 0} color="bg-warning/20" />
       <Tile icon={<Flame className="size-5 text-pink" />} label="Best streak" value={`${stats.bestStreakActive ?? 0}d`} color="bg-pink/20" />
-      <Tile icon={<Target className="size-5 text-info" />} label="Tests this week" value={stats.testsTakenThisWeek ?? 0} color="bg-info/20" />
+      <Tile icon={<Target className="size-5 text-info" />} label="Video quizzes this week" value={stats.testsTakenThisWeek ?? 0} color="bg-info/20" />
     </button>
   );
 }
@@ -1454,7 +1454,6 @@ function CommentThread({
   };
   return (
     <div className="rounded-2xl bg-secondary/30 p-3 space-y-2.5">
-      {comments.length === 0 && <div className="text-xs text-muted-foreground text-center py-2">Be the first to comment.</div>}
       {comments.map((c) => (
         <div key={c.id} className="flex items-start gap-2.5 group">
           <Avatar nickname={c.authorNickname} color={c.authorColor} size={28} />

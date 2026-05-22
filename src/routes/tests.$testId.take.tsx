@@ -243,7 +243,7 @@ function TestTakePage() {
         window.localStorage.removeItem(storageKey);
       }
       if (reason === "timeout") {
-        setError("Time is up. Your test was auto-submitted.");
+        setError("Time is up. Your video quiz was auto-submitted.");
       }
     } catch (err) {
       setError((err as Error).message);
@@ -265,19 +265,19 @@ function TestTakePage() {
   if (!familyId) {
     return (
       <div className="py-10 text-sm text-muted-foreground">
-        Select a family first to take tests.
+        Select a family first to take video quizzes.
       </div>
     );
   }
 
   if (role !== "child") {
-    return <div className="py-10 text-sm text-destructive">Only children can take tests.</div>;
+    return <div className="py-10 text-sm text-destructive">Only children can take video quizzes.</div>;
   }
 
   if (startMutation.isPending && !attempt) {
     return (
       <div className="py-16 text-sm text-muted-foreground inline-flex items-center gap-2">
-        <Loader2 className="size-4 animate-spin" /> Preparing your test...
+        <Loader2 className="size-4 animate-spin" /> Preparing your video quiz...
       </div>
     );
   }
@@ -285,9 +285,9 @@ function TestTakePage() {
   if (!attempt) {
     return (
       <div className="space-y-4 py-10">
-        <p className="text-sm text-destructive">{error ?? "Unable to load this test."}</p>
+        <p className="text-sm text-destructive">{error ?? "Unable to load this video quiz."}</p>
         <Link to="/tests" className="text-sm font-bold text-info hover:underline">
-          Back to Tests
+          Back to Video Quizzes
         </Link>
       </div>
     );
@@ -300,7 +300,7 @@ function TestTakePage() {
           to="/tests"
           className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground"
         >
-          <ArrowLeft className="size-4" /> Back to Tests
+          <ArrowLeft className="size-4" /> Back to Video Quizzes
         </Link>
         {phase === "answer" && (
           <div

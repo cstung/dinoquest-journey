@@ -14,7 +14,7 @@ import { useAuthStore } from "@/store";
 const primary = [
   { icon: Home, label: "Home", to: "/" },
   { icon: ListChecks, label: "Quests", to: "/quests" },
-  { icon: Video, label: "Tests", to: "/tests" },
+  { icon: Video, label: "Video Quiz", to: "/tests" },
   { icon: Trophy, label: "Leaderboard", to: "/leaderboard" },
 ] as const;
 

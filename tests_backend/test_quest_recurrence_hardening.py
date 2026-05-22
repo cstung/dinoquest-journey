@@ -23,7 +23,27 @@ def _register_with_invite(client: TestClient, username: str, email: str, invite_
 
 def _setup_family_with_child(client: TestClient) -> tuple[int, int, TestClient]:
     idx = next(_seq)
-    _register_with_invite(client, f"rec_parent_{idx}", f"rec_parent_{idx}@example.com", None)
+    parent_resp = client.post(
+        "/api/auth/register",
+        json={
+            "username": f"rec_parent_{idx}",
+            "password": "Password12345!",
+            "email": f"rec_parent_{idx}@example.com",
+        },
+    )
+    if parent_resp.status_code not in {201, 422}:
+        assert parent_resp.status_code == 201, parent_resp.text
+    if parent_resp.status_code == 422:
+        detail = str(parent_resp.json().get("detail", "")).lower()
+        assert "invitecode is required" in detail
+        me = client.get("/api/auth/me")
+        assert me.status_code == 200, me.text
+        me_body = me.json()
+        role = me_body.get("role")
+        global_role = me_body.get("globalRole")
+        assert role in {"parent", "superadmin", None}
+        assert global_role in {"superadmin", "user"}
+
     family = client.post("/api/families", json={"name": f"Rec Family {idx}", "motto": "QA"})
     assert family.status_code == 201, family.text
     family_id = family.json()["id"]
@@ -124,3 +144,109 @@ def test_scheduler_catchup_is_idempotent_and_marks_overdue(client: TestClient) -
     asyncio.run(run_quest_scheduler(now_utc=checkpoint))
     second_total, second_max_cycle, second_missed = asyncio.run(_snapshot())
     assert (second_total, second_max_cycle, second_missed) == (first_total, first_max_cycle, first_missed)
+
+
+def test_due_date_today_vn_stores_utc_eod_and_allows_completion(client: TestClient) -> None:
+    family_id, child_user_id, child_client = _setup_family_with_child(client)
+    vn_today = datetime.now(TZ).date().isoformat()
+
+    created = client.post(
+        f"/api/families/{family_id}/quests",
+        json={
+            "title": "VN EOD quest",
+            "xpReward": 30,
+            "frequency": "once",
+            "dueDate": f"{vn_today}T16:59:59.999Z",
+            "assignedUserIds": [child_user_id],
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+
+    assert body["dueDate"].startswith(f"{vn_today}T16:59:59.999")
+    assert body["assignedMembers"][0]["cycleDueAt"].startswith(f"{vn_today}T16:59:59.999")
+
+    quest_id = body["id"]
+    complete = child_client.post(f"/api/families/{family_id}/quests/{quest_id}/complete")
+    assert complete.status_code == 200, complete.text
+    assert complete.json()["status"] == "pending_approval"
+
+
+def test_due_date_bare_date_promotes_to_vn_end_of_day(client: TestClient) -> None:
+    family_id, child_user_id, _ = _setup_family_with_child(client)
+    vn_today = datetime.now(TZ).date().isoformat()
+
+    created = client.post(
+        f"/api/families/{family_id}/quests",
+        json={
+            "title": "Date only quest",
+            "xpReward": 15,
+            "frequency": "once",
+            "dueDate": vn_today,
+            "assignedUserIds": [child_user_id],
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["dueDate"].startswith(f"{vn_today}T16:59:59.999")
+    assert body["assignedMembers"][0]["cycleDueAt"].startswith(f"{vn_today}T16:59:59.999")
+
+
+def test_due_date_past_vn_date_is_rejected(client: TestClient) -> None:
+    family_id, child_user_id, _ = _setup_family_with_child(client)
+    past_vn = (datetime.now(TZ).date() - timedelta(days=1)).isoformat()
+
+    created = client.post(
+        f"/api/families/{family_id}/quests",
+        json={
+            "title": "Past date quest",
+            "xpReward": 10,
+            "frequency": "once",
+            "dueDate": past_vn,
+            "assignedUserIds": [child_user_id],
+        },
+    )
+    assert created.status_code == 422, created.text
+    detail = str(created.json().get("detail", "")).lower()
+    assert "past" in detail
+
+
+def test_completion_fails_after_due_boundary(client: TestClient) -> None:
+    from backend.database import SessionLocal
+    from backend.models import QuestAssignment
+
+    family_id, child_user_id, child_client = _setup_family_with_child(client)
+    vn_today = datetime.now(TZ).date().isoformat()
+
+    created = client.post(
+        f"/api/families/{family_id}/quests",
+        json={
+            "title": "Boundary quest",
+            "xpReward": 12,
+            "frequency": "once",
+            "dueDate": f"{vn_today}T16:59:59.999Z",
+            "assignedUserIds": [child_user_id],
+        },
+    )
+    assert created.status_code == 201, created.text
+    quest_id = created.json()["id"]
+
+    async def _force_expired() -> None:
+        async with SessionLocal() as db:
+            row = await db.execute(
+                select(QuestAssignment).where(
+                    QuestAssignment.quest_id == quest_id,
+                    QuestAssignment.user_id == child_user_id,
+                    QuestAssignment.cycle_index == 1,
+                )
+            )
+            assignment = row.scalar_one()
+            assignment.cycle_due_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+            assignment.status = "pending"
+            await db.commit()
+
+    asyncio.run(_force_expired())
+
+    complete = child_client.post(f"/api/families/{family_id}/quests/{quest_id}/complete")
+    assert complete.status_code == 400, complete.text
+    assert "deadline has passed" in complete.json()["detail"].lower()

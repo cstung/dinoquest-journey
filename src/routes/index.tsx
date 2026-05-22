@@ -147,7 +147,7 @@ function HomePage() {
         />
         <Stat
           icon={<Trophy className="size-4" />}
-          label="Published tests"
+          label="Published video quizzes"
           value={tests.filter((t) => t.status === "published").length}
           color="bg-warning/10 border-warning/20 text-warning"
         />
@@ -199,7 +199,7 @@ function HomePage() {
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-extrabold uppercase tracking-wide px-2 py-1 rounded-md bg-info/15 text-info">
-                    Test
+                    Video Quiz
                   </span>
                   <span className="text-xs font-extrabold text-warning">
                     +{featuredTest.maxXp} XP

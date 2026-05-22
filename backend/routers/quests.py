@@ -504,6 +504,12 @@ async def _complete_assignment(
     if membership.role != "child":
         raise HTTPException(status_code=403, detail="Only children can request quest completion.")
     now_utc = datetime.now(timezone.utc)
+    normalized_cycle_due = _normalize_due_date_for_day_boundary(_as_utc(assignment.cycle_due_at))
+    if normalized_cycle_due is not None and normalized_cycle_due != _as_utc(assignment.cycle_due_at):
+        # Backward-compatibility: heal legacy midnight due dates to VN end-of-day.
+        assignment.cycle_due_at = normalized_cycle_due
+        await db.flush()
+
     transition = await db.execute(
         sa_update(QuestAssignment)
         .where(
@@ -651,6 +657,10 @@ async def resolve_quest_assignment(
 
     assignment, quest = result
     now_utc = datetime.now(timezone.utc)
+    normalized_cycle_due = _normalize_due_date_for_day_boundary(_as_utc(assignment.cycle_due_at))
+    if normalized_cycle_due is not None and normalized_cycle_due != _as_utc(assignment.cycle_due_at):
+        assignment.cycle_due_at = normalized_cycle_due
+        await db.flush()
     cycle_due_at = _as_utc(assignment.cycle_due_at)
     is_overdue = cycle_due_at is not None and now_utc > cycle_due_at
 

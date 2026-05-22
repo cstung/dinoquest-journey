@@ -19,7 +19,7 @@ import { useLeaderboard } from "@/hooks/use-leaderboard";
 
 const navItems = [
   { icon: ListChecks, label: "Quests", to: "/quests" },
-  { icon: Video, label: "Tests", to: "/tests" },
+  { icon: Video, label: "Video Quiz", to: "/tests" },
   { icon: CalendarDays, label: "Calendar", to: "/calendar" },
   { icon: Trophy, label: "Leaderboard", to: "/leaderboard" },
   { icon: Egg, label: "Pets", to: "/pets" },

@@ -57,29 +57,29 @@ function TestsPage() {
   if (!familyId) {
     return (
       <div className="py-10 text-sm text-muted-foreground">
-        Select a family first to view tests.
+        Select a family first to view video quizzes.
       </div>
     );
   }
 
   if (isLoading) {
-    return <div className="py-10 text-sm text-muted-foreground">Loading tests...</div>;
+    return <div className="py-10 text-sm text-muted-foreground">Loading video quizzes...</div>;
   }
 
   if (error) {
-    return <div className="py-10 text-sm text-destructive">Failed to load tests.</div>;
+    return <div className="py-10 text-sm text-destructive">Failed to load video quizzes.</div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-3xl">{isParent ? "Tests" : "My Tests"}</h1>
+        <h1 className="text-3xl">{isParent ? "Video Quizzes" : "My Video Quizzes"}</h1>
         {isParent && (
           <Link
             to="/tests/new"
             className="rounded-2xl bg-info text-info-foreground font-display font-extrabold uppercase px-5 py-3 shadow-pop-sm inline-flex items-center gap-2"
           >
-            <Plus className="size-5" strokeWidth={3} /> New Test
+            <Plus className="size-5" strokeWidth={3} /> New Video Quiz
           </Link>
         )}
       </div>
@@ -99,7 +99,7 @@ function TestsPage() {
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search tests..."
+        placeholder="Search video quizzes..."
         className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-info"
       />
 
@@ -136,7 +136,7 @@ function TestsPage() {
 
       {tests.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
-          <div className="text-5xl mb-3">No tests yet.</div>
+          <div className="text-5xl mb-3">No video quizzes yet.</div>
           <p className="font-bold">Create one from a YouTube video to get started.</p>
         </div>
       )}
@@ -210,7 +210,7 @@ function TestCard({
       await availabilityMutation.mutateAsync({ isActive: isInactive });
       setActionResult({
         title: isInactive ? "Activated" : "Deactivated",
-        message: isInactive ? "Test is now open for children." : "Test is now inactive.",
+        message: isInactive ? "Video quiz is now open for children." : "Video quiz is now inactive.",
         variant: "success",
       });
     } catch (err) {
@@ -230,7 +230,7 @@ function TestCard({
       await deleteMutation.mutateAsync();
       setActionResult({
         title: "Deleted",
-        message: "Test deleted successfully.",
+        message: "Video quiz deleted successfully.",
         variant: "success",
       });
     } catch (err) {
@@ -348,7 +348,7 @@ function TestCard({
                             : "bg-primary text-primary-foreground btn-pop",
                         )}
                       >
-                        {isInactive ? "Inactive" : "Start Test"}
+                        {isInactive ? "Inactive" : "Start Video Quiz"}
                       </Link>
                     </>
                   )}

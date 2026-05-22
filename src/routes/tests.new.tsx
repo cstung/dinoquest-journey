@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api";
 import { useFamilyStore } from "@/store";
 import { useFamilyMembers } from "@/hooks/use-families";
 import {
@@ -36,6 +37,7 @@ function NewTestWizard() {
   const [questions, setQuestions] = useState<EditorQuestion[]>([]);
   const [regeneratingQuestionId, setRegeneratingQuestionId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [subtitleNotice, setSubtitleNotice] = useState<string | null>(null);
 
   const membersQuery = useFamilyMembers(familyId);
   const subtitleMutation = usePreviewSubtitle(familyId);
@@ -55,7 +57,7 @@ function NewTestWizard() {
   }
 
   if (role !== "parent") {
-    return <div className="py-10 text-sm text-destructive">Only parents can create tests.</div>;
+    return <div className="py-10 text-sm text-destructive">Only parents can create video quizzes.</div>;
   }
 
   return (
@@ -66,7 +68,7 @@ function NewTestWizard() {
       >
         <ArrowLeft className="size-4" /> Back
       </Link>
-      <h1 className="text-3xl">Create a Test</h1>
+      <h1 className="text-3xl">Create a Video Quiz</h1>
 
       <div className="flex items-center gap-2">
         {([1, 2, 3] as const).map((s, i) => (
@@ -104,8 +106,10 @@ function NewTestWizard() {
           difficulty={difficulty}
           setDifficulty={setDifficulty}
           error={error}
+          subtitleNotice={subtitleNotice}
           onDownloadSubtitle={async (youtubeUrl) => {
             setError(null);
+            setSubtitleNotice(null);
             try {
               const subtitle = await subtitleMutation.mutateAsync({ youtubeUrl });
               setSubtitlePreview(subtitle);
@@ -113,11 +117,14 @@ function NewTestWizard() {
               setQuestions([]);
               setRegeneratingQuestionId(null);
             } catch (err) {
-              setError((err as Error).message);
+              const info = subtitleErrorInfo(err);
+              setError(info.message);
+              setSubtitleNotice(info.notice);
             }
           }}
           onGenerateQuiz={async (youtubeUrl, questionCount) => {
             setError(null);
+            setSubtitleNotice(null);
             try {
               let subtitle = subtitlePreview;
               const normalizedInput = youtubeUrl.trim();
@@ -144,7 +151,9 @@ function NewTestWizard() {
               setRegeneratingQuestionId(null);
               setStep(2);
             } catch (err) {
-              setError((err as Error).message);
+              const info = subtitleErrorInfo(err);
+              setError(info.message);
+              setSubtitleNotice(info.notice);
             }
           }}
         />
@@ -265,6 +274,7 @@ function Step1({
   difficulty,
   setDifficulty,
   error,
+  subtitleNotice,
 }: {
   onDownloadSubtitle: (youtubeUrl: string) => Promise<void>;
   onGenerateQuiz: (youtubeUrl: string, questionCount: number) => Promise<void>;
@@ -274,6 +284,7 @@ function Step1({
   difficulty: TestDifficulty;
   setDifficulty: (value: TestDifficulty) => void;
   error: string | null;
+  subtitleNotice: string | null;
 }) {
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [questionCount, setQuestionCount] = useState(10);
@@ -353,6 +364,11 @@ function Step1({
         </p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {subtitleNotice && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-900">
+          {subtitleNotice}
+        </div>
+      )}
     </div>
   );
 }
@@ -529,7 +545,7 @@ function Step3({
 }) {
   return (
     <div className="rounded-3xl bg-card border-2 border-border p-6 space-y-5">
-      <Field label="Test Title (From Video)">
+      <Field label="Video Quiz Title (From Video)">
         <input className={inputCls} value={title} readOnly />
       </Field>
       <div className="grid sm:grid-cols-2 gap-4">
@@ -590,7 +606,7 @@ function Step3({
           disabled={loading}
           className="flex-1 rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase py-3 btn-pop text-center disabled:opacity-60"
         >
-          {loading ? "Publishing..." : "Publish Test"}
+          {loading ? "Publishing..." : "Publish Video Quiz"}
         </button>
       </div>
     </div>
@@ -620,4 +636,19 @@ function difficultyLabel(value: TestDifficulty): string {
   if (value === "easy") return "Easy";
   if (value === "hard") return "Hard (Tricky)";
   return "Medium";
+}
+
+function subtitleErrorInfo(err: unknown): { message: string; notice: string | null } {
+  const message = err instanceof Error ? err.message : "Failed to fetch subtitles.";
+  if (
+    err instanceof ApiError &&
+    (err.status === 503 || /network policy|firewall|proxy|cloud-ip/i.test(err.detail))
+  ) {
+    return {
+      message,
+      notice:
+        "Server could not access YouTube subtitle endpoints. This is often caused by firewall/proxy egress policy or cloud-IP blocking. Ask admin to allow outbound access to youtube.com and video.google.com (HTTPS/443), or configure a rotating proxy for subtitle fetch.",
+    };
+  }
+  return { message, notice: null };
 }
