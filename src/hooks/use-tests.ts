@@ -98,7 +98,7 @@ export interface TestSubmitResult {
   scoreRaw: number;
   scorePct: number;
   xpEarned: number;
-  totalXp: number;
+  xpBalance: number;
   level: number;
 }
 
@@ -144,7 +144,7 @@ export interface TestReopenResolveResult {
   request: TestReopenRequestItem;
   assignmentStatus: "pending" | "completed";
   xpDelta: number;
-  totalXp: number;
+  xpBalance: number;
   level: number;
 }
 
@@ -298,6 +298,9 @@ export function useSubmitTest(familyId: number | null, testId: number | null) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tests", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["leaderboard", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["xp-trend", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-activity", "activity", familyId] });
     },
   });
 }

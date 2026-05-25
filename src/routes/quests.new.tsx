@@ -19,8 +19,8 @@ function NewQuest() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("learning");
   const [difficulty, setDifficulty] = useState("Easy");
-  const [xpReward, setXpReward] = useState(10);
-  const [dueDate, setDueDate] = useState("");
+  const [xpRewardInput, setXpRewardInput] = useState("10");
+  const [dueDate, setDueDate] = useState(todayDateInput());
   const [frequency, setFrequency] = useState<QuestFrequency>("once");
   const [recurrenceEndAt, setRecurrenceEndAt] = useState("");
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -47,6 +47,11 @@ function NewQuest() {
     }
     if (dueDate && isPastDateInput(dueDate)) {
       setError("Due date cannot be in the past.");
+      return;
+    }
+    const xpReward = Number.parseInt(xpRewardInput, 10);
+    if (!Number.isFinite(xpReward) || xpReward < 1) {
+      setError("XP Reward must be at least 1.");
       return;
     }
     try {
@@ -171,10 +176,11 @@ function NewQuest() {
           </Field>
           <Field label="XP Reward">
             <input
-              type="number"
-              value={xpReward}
+              type="text"
+              inputMode="numeric"
+              value={xpRewardInput}
               min={1}
-              onChange={(e) => setXpReward(Number(e.target.value))}
+              onChange={(e) => setXpRewardInput(normalizeXpInput(e.target.value))}
               className={inputCls}
             />
           </Field>
@@ -286,6 +292,21 @@ function shortenFileName(name: string): string {
   const ext = hasExt ? name.slice(lastDot) : "";
   const base = hasExt ? name.slice(0, lastDot) : name;
   return `${base.slice(0, 3)}...${base.slice(-4)}${ext}`;
+}
+
+function normalizeXpInput(value: string): string {
+  const digitsOnly = value.replace(/\D/g, "");
+  if (!digitsOnly) return "";
+  const noLeading = digitsOnly.replace(/^0+/, "");
+  return noLeading || "0";
+}
+
+function todayDateInput(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function dateInputToUtcEndOfDay(value: string): string {

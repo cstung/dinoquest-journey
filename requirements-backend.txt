@@ -13,3 +13,4 @@ qrcode[pil]==7.4.2
 apscheduler>=3.10.0
 openai>=1.45.0
 youtube-transcript-api>=0.6.2
+cachetools>=5.3.3

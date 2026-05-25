@@ -17,6 +17,7 @@ class XpEvent(Base):
     delta: Mapped[int] = mapped_column(nullable=False)
     reason: Mapped[str] = mapped_column(String(120), nullable=False)
     source_id: Mapped[int | None] = mapped_column(nullable=True)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
@@ -29,7 +30,7 @@ class UserFamilyLevel(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     family_id: Mapped[int] = mapped_column(ForeignKey("families.id"), nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    total_xp: Mapped[int] = mapped_column(nullable=False, default=0)
+    xp_balance: Mapped[int] = mapped_column(nullable=False, default=0)
     level: Mapped[int] = mapped_column(nullable=False, default=1)
     current_streak: Mapped[int] = mapped_column(nullable=False, default=0)
     best_streak: Mapped[int] = mapped_column(nullable=False, default=0)

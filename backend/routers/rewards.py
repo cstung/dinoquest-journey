@@ -17,7 +17,7 @@ from backend.schemas.reward import (
     RewardOut,
     RewardUpdate,
 )
-from backend.services.xp_engine import award_xp
+from backend.services.xp_engine import XpReason, award_xp
 
 router = APIRouter()
 
@@ -175,7 +175,7 @@ async def claim_reward(
             )
         )
     ).scalar_one_or_none()
-    current_xp = level_row.total_xp if level_row else 0
+    current_xp = level_row.xp_balance if level_row else 0
     if current_xp < reward.xp_cost:
         raise HTTPException(
             status_code=400,
@@ -292,7 +292,7 @@ async def resolve_reward_claim(
                 )
             )
         ).scalar_one_or_none()
-        current_xp = level_row.total_xp if level_row else 0
+        current_xp = level_row.xp_balance if level_row else 0
         if current_xp < reward.xp_cost:
             raise HTTPException(status_code=400, detail="User does not have enough XP")
         xp_delta = -reward.xp_cost
@@ -300,7 +300,7 @@ async def resolve_reward_claim(
             family_id=claim.family_id,
             user_id=claim.user_id,
             delta=xp_delta,
-            reason=f"reward_claim:{claim.id}",
+            reason=XpReason.REWARD_CLAIM,
             source_id=claim.id,
             db=db,
         )

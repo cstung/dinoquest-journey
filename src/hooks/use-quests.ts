@@ -43,7 +43,7 @@ export interface QuestCompleteResult {
   questId: number;
   assignmentId: number;
   xpAwarded: number;
-  totalXp: number;
+  xpBalance: number;
   level: number;
   status: "completed";
 }

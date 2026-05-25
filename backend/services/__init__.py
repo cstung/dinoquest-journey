@@ -6,7 +6,7 @@ from backend.services.invite_service import (
 from backend.services.pet_service import pet_level_from_xp, pet_stage_from_level, pet_xp_to_next_level
 from backend.services.quiz_generator import generate_quiz_questions, generate_single_quiz_question
 from backend.services.subtitle_service import build_subtitle_payload, extract_video_id
-from backend.services.xp_engine import award_xp, level_from_total_xp
+from backend.services.xp_engine import XpReason, award_xp, xp_cost_for_level_up
 
 __all__ = [
     "auto_promote_or_delete",
@@ -20,6 +20,7 @@ __all__ = [
     "generate_single_quiz_question",
     "build_subtitle_payload",
     "extract_video_id",
+    "XpReason",
     "award_xp",
-    "level_from_total_xp",
+    "xp_cost_for_level_up",
 ]

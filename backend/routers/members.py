@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from backend.database import get_db
 from backend.dependencies import get_active_membership, require_parent_or_superadmin
-from backend.models import ActivityLog, Family, FamilyMember, User
-from backend.schemas.member import MemberOut, MemberRoleUpdate
+from backend.models import ActivityLog, Family, FamilyMember, User, UserFamilyLevel, XpEvent
+from backend.realtime import emit_family_event
+from backend.schemas.member import LevelUpOut, MemberOut, MemberRoleUpdate
 from backend.services.family_service import auto_promote_or_delete
+from backend.services.xp_engine import XpReason, xp_cost_for_level_up
 
 router = APIRouter()
 
@@ -128,3 +130,91 @@ async def remove_member(
     )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{family_id}/members/me/level-up", response_model=LevelUpOut)
+async def level_up_me(
+    membership: FamilyMember = Depends(get_active_membership),
+    db: AsyncSession = Depends(get_db),
+) -> LevelUpOut:
+    level_row = (
+        await db.execute(
+            select(UserFamilyLevel).where(
+                UserFamilyLevel.family_id == membership.family_id,
+                UserFamilyLevel.user_id == membership.user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not level_row:
+        level_row = UserFamilyLevel(
+            family_id=membership.family_id,
+            user_id=membership.user_id,
+            xp_balance=0,
+            level=1,
+        )
+        db.add(level_row)
+        await db.flush()
+
+    current_level = max(level_row.level, 1)
+    current_balance = max(level_row.xp_balance, 0)
+    cost = xp_cost_for_level_up(current_level)
+    if current_balance < cost:
+        raise HTTPException(
+            status_code=400,
+            detail={"msg": "Not enough XP to level up.", "code": "insufficient_xp"},
+        )
+
+    applied = await db.execute(
+        update(UserFamilyLevel)
+        .where(
+            UserFamilyLevel.id == level_row.id,
+            UserFamilyLevel.level == current_level,
+            UserFamilyLevel.xp_balance == current_balance,
+        )
+        .values(
+            xp_balance=current_balance - cost,
+            level=current_level + 1,
+        )
+    )
+    if applied.rowcount != 1:
+        raise HTTPException(
+            status_code=409,
+            detail={"msg": "Level changed during request. Please try again.", "code": "level_conflict"},
+        )
+
+    db.add(
+        XpEvent(
+            family_id=membership.family_id,
+            user_id=membership.user_id,
+            delta=-cost,
+            reason=XpReason.LEVEL_UP.value,
+            source_id=None,
+        )
+    )
+    db.add(
+        ActivityLog(
+            family_id=membership.family_id,
+            user_id=membership.user_id,
+            event_type="level_up",
+            payload={"xp_spent": cost, "new_level": current_level + 1},
+            is_audit=False,
+        )
+    )
+    await db.commit()
+
+    await emit_family_event(
+        membership.family_id,
+        "xp_earned",
+        {"userId": membership.user_id, "delta": -cost, "reason": XpReason.LEVEL_UP.value},
+    )
+    await emit_family_event(
+        membership.family_id,
+        "leaderboard_update",
+        {"userId": membership.user_id},
+    )
+
+    return LevelUpOut(
+        new_level=current_level + 1,
+        xp_spent=cost,
+        xp_balance=current_balance - cost,
+    )

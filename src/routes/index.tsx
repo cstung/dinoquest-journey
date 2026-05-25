@@ -1,15 +1,101 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { ListChecks, Trophy, Flame, ArrowRight, Sparkles } from "lucide-react";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { XPBar } from "@/components/xp-bar";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { useFamilyActivity, useFamilyDetail } from "@/hooks/use-families";
-import { useLeaderboard } from "@/hooks/use-leaderboard";
+import { useLeaderboard, useLevelUp } from "@/hooks/use-leaderboard";
 import { usePets } from "@/hooks/use-pets";
 import { useQuests } from "@/hooks/use-quests";
 import { useTests } from "@/hooks/use-tests";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getQuestCategoryLabel } from "@/lib/quest-categories";
 
 export const Route = createFileRoute("/")({ component: HomePage });
+
+function eventLabelWithXp(eventType: string, payload: Record<string, unknown> | null): string {
+  const normalized = eventType.replaceAll("_", " ");
+  const xpDelta = resolveXpDelta(eventType, payload);
+  if (xpDelta === null) return normalized;
+  const sign = xpDelta >= 0 ? "+" : "-";
+  return `${normalized} (${sign}${Math.abs(xpDelta).toLocaleString()} XP)`;
+}
+
+function resolveXpDelta(eventType: string, payload: Record<string, unknown> | null): number | null {
+  if (!payload) return null;
+  const asNumber = (value: unknown): number | null => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    return null;
+  };
+  if (eventType === "test_completed") return asNumber(payload.xp_earned);
+  if (eventType === "quest_completed") return asNumber(payload.xp);
+  if (eventType === "reward_claim_resolved") return asNumber(payload.xp_delta);
+  if (eventType === "test_reopen_resolved") return asNumber(payload.xp_delta);
+  if (eventType === "level_up") {
+    const spent = asNumber(payload.xp_spent);
+    return spent == null ? null : -Math.abs(spent);
+  }
+  return null;
+}
+
+function buildXpBalanceSeries(
+  activity: Array<{
+    createdAt: string;
+    eventType: string;
+    payload: Record<string, unknown> | null;
+    userId: number | null;
+  }>,
+  userId: number,
+  currentBalance: number,
+): Array<{ label: string; balance: number }> {
+  const days = 7;
+  const msDay = 24 * 60 * 60 * 1000;
+  const today = new Date();
+  const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const start = new Date(endOfToday.getTime() - (days - 1) * msDay);
+  const deltasByDay = new Array<number>(days).fill(0);
+
+  for (const item of activity) {
+    if (item.userId !== userId) continue;
+    const delta = resolveXpDelta(item.eventType, item.payload);
+    if (delta == null) continue;
+    const ts = new Date(item.createdAt);
+    const day = new Date(ts.getFullYear(), ts.getMonth(), ts.getDate());
+    const dayIndex = Math.floor((day.getTime() - start.getTime()) / msDay);
+    if (dayIndex >= 0 && dayIndex < days) {
+      deltasByDay[dayIndex] += delta;
+    }
+  }
+
+  const netInWindow = deltasByDay.reduce((acc, value) => acc + value, 0);
+  let runningBalance = currentBalance - netInWindow;
+
+  return deltasByDay.map((delta, index) => {
+    runningBalance += delta;
+    const day = new Date(start.getTime() + index * msDay);
+    return {
+      label: day.toLocaleDateString(undefined, { weekday: "short" }),
+      balance: Math.max(0, Math.round(runningBalance)),
+    };
+  });
+}
 
 function Greeting({ name }: { name: string }) {
   const hour = new Date().getHours();
@@ -50,8 +136,13 @@ function HomePage() {
   const leaderboardQuery = useLeaderboard(activeFamilyId, "family");
   const questsQuery = useQuests(activeFamilyId, { status: "pending" });
   const testsQuery = useTests(activeFamilyId, { status: "all" });
-  const activityQuery = useFamilyActivity(activeFamilyId, "activity", !!activeFamilyId);
+  const activityQuery = useFamilyActivity(activeFamilyId, "activity", !!activeFamilyId, 100);
   const petsQuery = usePets(activeFamilyId);
+  const levelUpMutation = useLevelUp(activeFamilyId);
+  const [levelUpConfirmOpen, setLevelUpConfirmOpen] = useState(false);
+  const [levelUpSuccessOpen, setLevelUpSuccessOpen] = useState(false);
+  const [levelUpError, setLevelUpError] = useState<string | null>(null);
+  const [levelUpReachedLevel, setLevelUpReachedLevel] = useState<number | null>(null);
 
   if (!activeFamilyId || !user) {
     return (
@@ -83,10 +174,11 @@ function HomePage() {
 
   const family = familyQuery.data;
   const myEntry = (leaderboardQuery.data?.items ?? []).find((entry) => entry.isYou) ?? null;
-  const heroProgress = myEntry ? xpProgress(myEntry.xp, myEntry.level) : null;
   const heroLevel = myEntry?.level ?? 1;
-  const heroCurrentXp = heroProgress?.current ?? 0;
-  const heroXpToNext = heroProgress?.required ?? 100;
+  const heroBalance = myEntry?.xp ?? 0;
+  const heroLevelUpCost = 50 * Math.max(heroLevel, 1);
+  const heroCanLevelUp = heroBalance >= heroLevelUpCost;
+  const heroProgressCurrent = Math.min(heroBalance, heroLevelUpCost);
   const heroStreak = myEntry?.currentStreak ?? 0;
   const pendingQuests = questsQuery.data?.items ?? [];
   const tests = testsQuery.data?.items ?? [];
@@ -105,10 +197,23 @@ function HomePage() {
     );
   }).length;
 
-  const featuredTest = tests.find((t) => t.status === "published") ?? tests[0];
+  const xpBalanceSeries = useMemo(
+    () => buildXpBalanceSeries(activity, user.id, heroBalance),
+    [activity, user.id, heroBalance],
+  );
+  const chartDomain = useMemo(() => {
+    if (xpBalanceSeries.length === 0) return [0, Math.max(heroBalance, 10)] as const;
+    const values = xpBalanceSeries.map((point) => point.balance);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const pad =
+      min === max ? Math.max(10, Math.round(max * 0.12)) : Math.max(6, Math.round((max - min) * 0.2));
+    return [Math.max(0, min - pad), max + pad] as const;
+  }, [xpBalanceSeries, heroBalance]);
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       <div className="rounded-3xl bg-gradient-to-br from-primary to-primary-dark text-primary-foreground p-6 sm:p-8 shadow-pop-lg">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -128,7 +233,24 @@ function HomePage() {
           </div>
         </div>
         <div className="mt-6 bg-white/15 backdrop-blur rounded-2xl p-4">
-          <XPBar currentXP={heroCurrentXp} maxXP={heroXpToNext} level={heroLevel} />
+          <XPBar currentXP={heroProgressCurrent} maxXP={heroLevelUpCost} level={heroLevel} />
+          <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-xs font-bold text-primary-foreground/90">
+              Balance: {heroBalance.toLocaleString()} XP · Level up cost:{" "}
+              {heroLevelUpCost.toLocaleString()} XP
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setLevelUpError(null);
+                setLevelUpConfirmOpen(true);
+              }}
+              disabled={!heroCanLevelUp || levelUpMutation.isPending}
+              className="rounded-xl bg-warning text-warning-foreground font-display font-extrabold uppercase text-xs px-4 py-2 shadow-pop-sm disabled:opacity-60"
+            >
+              {levelUpMutation.isPending ? "Leveling..." : "Level Up"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -192,27 +314,58 @@ function HomePage() {
                 )}
               </Link>
             ))}
-            {featuredTest && (
-              <Link
-                to="/tests"
-                className="rounded-2xl bg-card border-2 border-border p-4 card-pop hover:border-info/40 transition-colors block"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-extrabold uppercase tracking-wide px-2 py-1 rounded-md bg-info/15 text-info">
-                    Video Quiz
-                  </span>
-                  <span className="text-xs font-extrabold text-warning">
-                    +{featuredTest.maxXp} XP
-                  </span>
-                </div>
-                <h3 className="font-display font-extrabold text-base leading-tight">
-                  {featuredTest.title}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {featuredTest.questionCount} questions · {featuredTest.timeLimitMin} min
-                </p>
-              </Link>
-            )}
+          </div>
+
+          <div className="rounded-2xl bg-card border-2 border-border p-4 mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-extrabold uppercase tracking-wide px-2 py-1 rounded-md bg-warning/15 text-warning">
+                XP Balance
+              </span>
+              <span className="text-xs font-extrabold text-primary-dark">Last 7 days</span>
+            </div>
+            <h3 className="font-display font-extrabold text-base leading-tight">Ending Balance Trend</h3>
+            <p className="text-xs text-muted-foreground mt-2 mb-2">
+              Today: {heroBalance.toLocaleString()} XP
+            </p>
+            <div className="h-44 mt-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={xpBalanceSeries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+                  <CartesianGrid strokeDasharray="4 4" stroke="#D7DEE6" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11, fill: "#6B7280", fontWeight: 700 }}
+                  />
+                  <YAxis hide domain={chartDomain as [number, number]} />
+                  <Tooltip
+                    formatter={(value) => [`${Number(value).toLocaleString()} XP`, "Balance"]}
+                    contentStyle={{
+                      borderRadius: 12,
+                      border: "2px solid #D7DEE6",
+                      background: "#FFFFFF",
+                      fontWeight: 700,
+                      fontSize: 12,
+                    }}
+                  />
+                  <ReferenceLine
+                    y={heroBalance}
+                    stroke="#F59E0B"
+                    strokeDasharray="4 4"
+                    ifOverflow="extendDomain"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="balance"
+                    stroke="#0EA5E9"
+                    strokeWidth={3.5}
+                    dot={{ r: 3.5, fill: "#0EA5E9", strokeWidth: 0 }}
+                    activeDot={{ r: 5, fill: "#0284C7" }}
+                    connectNulls
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
           <div className="rounded-2xl bg-card border-2 border-border p-4 mt-4">
@@ -231,7 +384,7 @@ function HomePage() {
                     <div className="flex-1 min-w-0">
                       <span className="font-bold">{a.username ?? "System"}</span>{" "}
                       <span className="text-muted-foreground">
-                        {a.eventType.replaceAll("_", " ")}
+                        {eventLabelWithXp(a.eventType, a.payload ?? null)}
                       </span>
                     </div>
                     <span className="text-xs text-muted-foreground shrink-0">
@@ -281,14 +434,68 @@ function HomePage() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+      <Dialog open={levelUpConfirmOpen} onOpenChange={setLevelUpConfirmOpen}>
+      <DialogContent className="max-w-sm rounded-3xl border-2 border-border bg-card p-6 shadow-pop-lg">
+        <DialogHeader className="space-y-2">
+          <DialogTitle className="font-display text-2xl font-extrabold">
+            Level Up to Level {heroLevel + 1}?
+          </DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            This will cost {heroLevelUpCost.toLocaleString()} XP. Balance:{" "}
+            {heroBalance.toLocaleString()} XP. After level up:{" "}
+            {Math.max(heroBalance - heroLevelUpCost, 0).toLocaleString()} XP.
+          </DialogDescription>
+          {levelUpError && <p className="text-sm text-destructive">{levelUpError}</p>}
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <button
+            type="button"
+            onClick={() => setLevelUpConfirmOpen(false)}
+            className="rounded-xl border-2 border-border bg-background px-4 py-2 text-xs font-extrabold uppercase"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              setLevelUpError(null);
+              try {
+                const result = await levelUpMutation.mutateAsync();
+                setLevelUpReachedLevel(result.newLevel);
+                setLevelUpConfirmOpen(false);
+                setLevelUpSuccessOpen(true);
+              } catch (err) {
+                setLevelUpError((err as Error).message);
+              }
+            }}
+            disabled={!heroCanLevelUp || levelUpMutation.isPending}
+            className="rounded-xl bg-primary text-primary-foreground px-4 py-2 text-xs font-extrabold uppercase disabled:opacity-60"
+          >
+            {levelUpMutation.isPending ? "Processing..." : "Confirm Level Up"}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+      </Dialog>
+      <Dialog open={levelUpSuccessOpen} onOpenChange={setLevelUpSuccessOpen}>
+      <DialogContent className="max-w-sm rounded-3xl border-2 border-border bg-card p-6 shadow-pop-lg">
+        <DialogHeader className="space-y-2">
+          <DialogTitle className="font-display text-2xl font-extrabold">
+            You reached Level {levelUpReachedLevel ?? heroLevel}!
+          </DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            Great work. Keep going for the next level.
+          </DialogDescription>
+        </DialogHeader>
+        <button
+          type="button"
+          onClick={() => setLevelUpSuccessOpen(false)}
+          className="mt-2 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-xs font-extrabold uppercase"
+        >
+          Close
+        </button>
+      </DialogContent>
+      </Dialog>
+    </>
   );
-}
-
-function xpProgress(totalXp: number, level: number): { current: number; required: number } {
-  const safeLevel = Math.max(level, 1);
-  const prevLevelsXp = (100 * (safeLevel - 1) * safeLevel) / 2;
-  const required = 100 * safeLevel;
-  const current = Math.max(0, Math.min(totalXp - prevLevelsXp, required));
-  return { current, required };
 }

@@ -54,7 +54,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { XPBar } from "@/components/xp-bar";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { ApiError, apiRequest } from "@/lib/api";
 
@@ -101,8 +100,8 @@ interface ProfileData {
 }
 interface Stats {
   level: number;
-  total_xp: number;
-  xp_to_next_level: number;
+  xp_balance: number;
+  level_up_cost: number;
   total_quests_completed: number;
   total_quests_pending: number;
   total_tests_completed: number;
@@ -177,8 +176,8 @@ interface TestPage {
 
 const EMPTY_STATS: Stats = {
   level: 0,
-  total_xp: 0,
-  xp_to_next_level: 1,
+  xp_balance: 0,
+  level_up_cost: 50,
   total_quests_completed: 0,
   total_quests_pending: 0,
   total_tests_completed: 0,
@@ -241,7 +240,7 @@ function eventText(ev: ActivityEv): { icon: string; text: string; color: string 
     case "test_completed":
       return { icon: "??", color: "bg-info/15 text-info-foreground", text: `Scored ${score}% on "${testTitle}"` };
     case "level_up":
-      return { icon: "??", color: "bg-warning/15 text-warning-foreground", text: `Reached Level ${ev.payload.level}!` };
+      return { icon: "??", color: "bg-warning/15 text-warning-foreground", text: `Reached Level ${ev.payload.new_level ?? ev.payload.level ?? "new"}!` };
     case "achievement_earned":
       return { icon: "??", color: "bg-purple/15 text-purple", text: `Earned "${ev.payload.achievement_name}" Medal` };
     case "reward_claim_requested":
@@ -249,7 +248,11 @@ function eventText(ev: ActivityEv): { icon: string; text: string; color: string 
     case "streak_milestone":
       return { icon: "??", color: "bg-warning/15 text-warning-foreground", text: `${ev.payload.n}-day streak achieved!` };
     case "xp_earned":
-      return { icon: "?", color: "bg-primary/15 text-primary-dark", text: `Earned ${ev.payload.xp} XP` };
+      return {
+        icon: "?",
+        color: "bg-primary/15 text-primary-dark",
+        text: `${Number(ev.payload.delta ?? ev.payload.xp ?? 0) >= 0 ? "Earned" : "Spent"} ${Math.abs(Number(ev.payload.delta ?? ev.payload.xp ?? 0))} XP`,
+      };
   }
 }
 
@@ -387,8 +390,8 @@ function KidProfilePage() {
     return {
       ...EMPTY_STATS,
       level: leaderboard?.level ?? 1,
-      total_xp: leaderboard?.xp ?? 0,
-      xp_to_next_level: Math.max((leaderboard?.level ?? 1) * 100, (leaderboard?.xp ?? 0) + 1),
+      xp_balance: leaderboard?.xp ?? 0,
+      level_up_cost: Math.max((leaderboard?.level ?? 1) * 50, 50),
       total_quests_completed: totalQuestsCompleted,
       total_quests_pending: totalQuestsPending,
       total_tests_completed: totalTestsCompleted,
@@ -529,7 +532,7 @@ function KidProfilePage() {
   if (!resolvedProfile) return null;
 
   const rank = rankFromLevel(stats.level);
-  const xpPct = Math.min(100, (stats.total_xp / stats.xp_to_next_level) * 100);
+  const xpPct = Math.min(100, (stats.xp_balance / stats.level_up_cost) * 100);
   const age = resolvedProfile.birthday ? differenceInYears(new Date(), new Date(resolvedProfile.birthday)) : null;
 
   return (
@@ -555,7 +558,7 @@ function KidProfilePage() {
           <div className="lg:col-span-2 space-y-6">
             {/* Section 4 — XP & Level */}
             <Card>
-              <SectionHeader icon={<TrendingUp className="size-5" />} title="Level & XP" caption={`XP shown for ${activeFamilyName}`} />
+              <SectionHeader icon={<TrendingUp className="size-5" />} title="Level & XP" caption={`Spendable XP balance in ${activeFamilyName}`} />
               <div className="space-y-4">
                 <div className="flex items-end justify-between gap-3 flex-wrap">
                   <div>
@@ -564,18 +567,18 @@ function KidProfilePage() {
                   </div>
                   <div className="text-right">
                     <div className="font-display font-extrabold tabular-nums">
-                      {stats.total_xp.toLocaleString()} / {stats.xp_to_next_level.toLocaleString()} XP
+                      {stats.xp_balance.toLocaleString()} / {stats.level_up_cost.toLocaleString()} XP
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {(stats.xp_to_next_level - stats.total_xp).toLocaleString()} XP to next level
+                      {Math.max(stats.level_up_cost - stats.xp_balance, 0).toLocaleString()} XP until level up is available
                     </div>
                   </div>
                 </div>
                 <div
                   role="progressbar"
-                  aria-valuenow={stats.total_xp}
+                  aria-valuenow={Math.min(stats.xp_balance, stats.level_up_cost)}
                   aria-valuemin={0}
-                  aria-valuemax={stats.xp_to_next_level}
+                  aria-valuemax={stats.level_up_cost}
                   aria-label="XP Progress"
                   className="relative h-5 rounded-full bg-muted overflow-hidden border-2 border-foreground/5"
                 >
@@ -1264,4 +1267,3 @@ function ConfettiStrip() {
     </div>
   );
 }
-

@@ -111,7 +111,7 @@ class QuestCompleteOut(APIModel):
     quest_id: int
     assignment_id: int
     xp_awarded: int
-    total_xp: int
+    xp_balance: int
     level: int
     status: str
 

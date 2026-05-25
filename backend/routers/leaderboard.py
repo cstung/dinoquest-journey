@@ -30,7 +30,7 @@ async def get_leaderboard(
                 User.username,
                 FamilyMember.avatar_color,
                 func.coalesce(UserFamilyLevel.level, 1),
-                func.coalesce(UserFamilyLevel.total_xp, 0),
+                func.coalesce(UserFamilyLevel.xp_balance, 0),
                 func.coalesce(UserFamilyLevel.current_streak, 0),
             )
             .join(FamilyMember, FamilyMember.user_id == User.id)
@@ -39,7 +39,7 @@ async def get_leaderboard(
                 (UserFamilyLevel.user_id == User.id) & (UserFamilyLevel.family_id == membership.family_id),
             )
             .where(FamilyMember.family_id == membership.family_id)
-            .order_by(func.coalesce(UserFamilyLevel.total_xp, 0).desc(), User.username.asc())
+            .order_by(func.coalesce(UserFamilyLevel.xp_balance, 0).desc(), User.username.asc())
             .limit(limit)
         )
         raw = rows.all()
@@ -50,13 +50,13 @@ async def get_leaderboard(
                 User.username,
                 func.min(FamilyMember.avatar_color),
                 func.coalesce(func.max(UserFamilyLevel.level), 1),
-                func.coalesce(func.sum(UserFamilyLevel.total_xp), 0),
+                func.coalesce(func.sum(UserFamilyLevel.xp_balance), 0),
                 func.coalesce(func.max(UserFamilyLevel.current_streak), 0),
             )
             .join(FamilyMember, FamilyMember.user_id == User.id)
             .outerjoin(UserFamilyLevel, UserFamilyLevel.user_id == User.id)
             .group_by(User.id, User.username)
-            .order_by(func.coalesce(func.sum(UserFamilyLevel.total_xp), 0).desc(), User.username.asc())
+            .order_by(func.coalesce(func.sum(UserFamilyLevel.xp_balance), 0).desc(), User.username.asc())
             .limit(limit)
         )
         raw = rows.all()

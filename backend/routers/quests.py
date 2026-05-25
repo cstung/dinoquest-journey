@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import get_db
 from backend.datetime_utils import VN_TZ, ensure_utc, vn_end_of_day_utc
 from backend.dependencies import get_active_membership, get_current_user, require_parent
-from backend.models import ActivityLog, FamilyMember, Quest, QuestAssignment, User
+from backend.models import ActivityLog, FamilyMember, Quest, QuestAssignment, User, UserFamilyLevel
 from backend.realtime import emit_family_event
 from backend.schemas.quest import (
     QuestAssignedMemberOut,
@@ -24,7 +24,7 @@ from backend.schemas.quest import (
 )
 from backend.services.quest_scheduler import compute_cycle_due_at, compute_next_occurrence
 from backend.services.streak_service import update_streak
-from backend.services.xp_engine import award_xp
+from backend.services.xp_engine import XpReason, award_xp
 
 router = APIRouter()
 
@@ -579,7 +579,7 @@ async def _complete_assignment(
         quest_id=quest.id,
         assignment_id=assignment.id,
         xp_awarded=assignment.xp_awarded,
-        total_xp=0,
+        xp_balance=0,
         level=0,
         status=assignment.status,
     )
@@ -714,7 +714,7 @@ async def resolve_quest_assignment(
                 quest_id=quest.id,
                 assignment_id=assignment.id,
                 xp_awarded=0,
-                total_xp=0,
+                xp_balance=0,
                 level=0,
                 status=assignment.status,
             )
@@ -741,7 +741,7 @@ async def resolve_quest_assignment(
             family_id=assignment.family_id,
             user_id=assignment.user_id,
             delta=quest.xp_reward,
-            reason=f"quest:{quest.id}:cycle:{assignment.cycle_index}",
+            reason=XpReason.QUEST_COMPLETE,
             source_id=assignment.id,
             db=db,
         )
@@ -760,7 +760,7 @@ async def resolve_quest_assignment(
                 is_audit=False,
             )
         )
-        total_xp = level_row.total_xp
+        xp_balance = level_row.xp_balance
         level = level_row.level
         event_action = "completion_approved"
     else:
@@ -768,8 +768,16 @@ async def resolve_quest_assignment(
         assignment.completed_at = None
         assignment.completion_requested_at = None
         assignment.xp_awarded = 0
-        total_xp = 0
-        level = 0
+        current_level_row = (
+            await db.execute(
+                select(UserFamilyLevel).where(
+                    UserFamilyLevel.family_id == assignment.family_id,
+                    UserFamilyLevel.user_id == assignment.user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        xp_balance = current_level_row.xp_balance if current_level_row else 0
+        level = current_level_row.level if current_level_row else 1
         event_action = "completion_rejected"
 
     db.add(
@@ -810,7 +818,7 @@ async def resolve_quest_assignment(
         quest_id=quest.id,
         assignment_id=assignment.id,
         xp_awarded=assignment.xp_awarded,
-        total_xp=total_xp,
+        xp_balance=xp_balance,
         level=level,
         status=assignment.status,
     )

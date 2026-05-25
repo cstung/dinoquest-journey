@@ -1,24 +1,51 @@
 from __future__ import annotations
 
 import asyncio
-import html
 import json
 import logging
+import random
 import re
+import threading
 from dataclasses import dataclass
-from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import urlopen
-import xml.etree.ElementTree as ET
+
+try:
+    from cachetools import TTLCache
+except Exception:  # pragma: no cover - optional dependency guard
+    TTLCache = None  # type: ignore[assignment]
+
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi
+    from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled, VideoUnplayable
+except Exception:  # pragma: no cover - optional dependency guard
+    YouTubeTranscriptApi = None  # type: ignore[assignment]
+    NoTranscriptFound = RuntimeError  # type: ignore[assignment]
+    TranscriptsDisabled = RuntimeError  # type: ignore[assignment]
+    VideoUnplayable = RuntimeError  # type: ignore[assignment]
 
 from backend.config import get_settings
 
-try:
-    from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore
-except Exception:  # pragma: no cover - optional dependency fallback
-    YouTubeTranscriptApi = None  # type: ignore
-
 logger = logging.getLogger(__name__)
+settings = get_settings()
+
+_ytt = None
+if YouTubeTranscriptApi is not None:
+    try:
+        _ytt = YouTubeTranscriptApi()
+    except Exception:  # pragma: no cover - runtime init guard
+        _ytt = None
+
+if TTLCache is not None:
+    _subtitle_cache = TTLCache(
+        maxsize=settings.subtitle_cache_max_size,
+        ttl=settings.subtitle_cache_ttl_seconds,
+    )
+else:
+    _subtitle_cache = {}
+_cache_lock = threading.Lock()
+
+_PERMANENT_ERRORS = (TranscriptsDisabled, NoTranscriptFound, VideoUnplayable)
 
 
 class SubtitleUnavailableError(RuntimeError):
@@ -63,7 +90,7 @@ def _fallback_title(video_id: str) -> str:
 def _fetch_video_title(youtube_url: str) -> str | None:
     endpoint = f"https://www.youtube.com/oembed?{urlencode({'url': youtube_url.strip(), 'format': 'json'})}"
     try:
-        with urlopen(endpoint, timeout=5) as response:
+        with urlopen(endpoint, timeout=settings.subtitle_title_timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
             title = str(payload.get("title", "")).strip()
             return title or None
@@ -72,128 +99,15 @@ def _fetch_video_title(youtube_url: str) -> str | None:
         return None
 
 
-def _normalize_transcript_segments(items) -> str:
-    parts = []
-    for row in items:
-        text = ""
-        if isinstance(row, dict):
-            text = str(row.get("text", ""))
-        else:
-            text = str(getattr(row, "text", ""))
-        text = text.strip()
-        if text:
-            parts.append(text.replace("\n", " "))
-    return " ".join(parts).strip()
-
-
-def _normalize_timedtext_xml(xml_payload: str) -> str:
-    xml_payload = (xml_payload or "").strip()
-    if not xml_payload:
-        return ""
-    try:
-        root = ET.fromstring(xml_payload)
-    except Exception:
-        return ""
-    parts: list[str] = []
-    for node in root.findall(".//text"):
-        text = "".join(node.itertext()).strip()
-        if text:
-            parts.append(html.unescape(text).replace("\n", " "))
-    return " ".join(parts).strip()
-
-
-def _fetch_timedtext_transcript(video_id: str) -> tuple[str, str]:
-    candidates = (
-        f"https://www.youtube.com/api/timedtext?lang=en&v={video_id}",
-        f"https://www.youtube.com/api/timedtext?lang=en&kind=asr&v={video_id}",
-        f"https://www.youtube.com/api/timedtext?lang=en-US&kind=asr&v={video_id}",
-        f"https://video.google.com/timedtext?lang=en&v={video_id}",
-        f"https://video.google.com/timedtext?lang=en&kind=asr&v={video_id}",
-    )
-    for endpoint in candidates:
-        try:
-            with urlopen(endpoint, timeout=5) as response:
-                body = response.read().decode("utf-8", errors="ignore")
-            text = _normalize_timedtext_xml(body)
-            if text:
-                return text, "youtube_auto"
-        except Exception:
-            continue
-    raise SubtitleUnavailableError("No subtitles are available for this video.", code="no_subtitles")
-
-
-def _iter_transcripts(transcript_list: Any) -> list[Any]:
-    try:
-        return list(transcript_list)
-    except Exception:
-        return []
-
-
-def _api_client():
-    # v1.x exposes an instance API, older versions used class/static methods.
-    try:
-        return YouTubeTranscriptApi()  # type: ignore[misc]
-    except Exception:
-        return YouTubeTranscriptApi  # type: ignore[return-value]
-
-
-def _fetch_from_transcript_obj(transcript_obj, source: str) -> tuple[str, str]:
-    fetched = transcript_obj.fetch()
-    text = _normalize_transcript_segments(fetched)
-    if not text:
-        raise RuntimeError("Transcript fetch returned empty content")
-    return text, source
-
-
-def _fetch_generated_transcript_any_language(transcript_list: Any) -> tuple[str, str]:
-    generated_tracks = [
-        transcript
-        for transcript in _iter_transcripts(transcript_list)
-        if bool(getattr(transcript, "is_generated", False))
-    ]
-
-    # First prefer direct english generated captions.
-    for transcript in generated_tracks:
-        if str(getattr(transcript, "language_code", "")).lower() == "en":
-            try:
-                return _fetch_from_transcript_obj(transcript, "youtube_auto")
-            except Exception:
-                continue
-
-    # Then generated captions translated to english where supported.
-    for transcript in generated_tracks:
-        if bool(getattr(transcript, "is_translatable", False)):
-            try:
-                translated = transcript.translate("en")
-                return _fetch_from_transcript_obj(translated, "youtube_translated")
-            except Exception:
-                continue
-
-    # Finally, accept non-english generated captions as-is.
-    for transcript in generated_tracks:
-        try:
-            return _fetch_from_transcript_obj(transcript, "youtube_auto")
-        except Exception:
-            continue
-
-    raise SubtitleUnavailableError(
-        "Auto-generated subtitles are not available for this video.",
-        code="no_subtitles",
-    )
-
-
 def _classify_caption_error(exc: Exception) -> SubtitleUnavailableError:
-    name = exc.__class__.__name__.lower()
-    message = str(exc or "").strip()
-    text = f"{name} {message}".lower()
+    if isinstance(exc, TranscriptsDisabled):
+        return SubtitleUnavailableError("No subtitles are available for this video.", code="no_subtitles")
+    if isinstance(exc, NoTranscriptFound):
+        return SubtitleUnavailableError("No subtitles are available for this video.", code="no_subtitles")
+    if isinstance(exc, VideoUnplayable):
+        return SubtitleUnavailableError("This YouTube video is unplayable from the server.", code="video_unplayable")
 
-    if "invalid youtube url" in text or "invalidvideoid" in text:
-        return SubtitleUnavailableError("Invalid YouTube URL.", code="invalid_url")
-    if "youtube-transcript-api is not installed" in text or "modulenotfounderror" in text:
-        return SubtitleUnavailableError(
-            "Subtitle service is not configured on the server (missing youtube-transcript-api). Please contact admin.",
-            code="dependency_missing",
-        )
+    text = f"{exc.__class__.__name__} {exc}".lower()
     if "timeout" in text:
         return SubtitleUnavailableError(
             "Subtitle fetch timed out. Check network connectivity and retry.",
@@ -221,117 +135,89 @@ def _classify_caption_error(exc: Exception) -> SubtitleUnavailableError:
             code="network_policy_blocked",
         )
 
-    subtitle_missing_markers = (
-        "transcriptsdisabled",
-        "notranscriptfound",
-        "nosubtitles",
-        "no subtitles",
-        "video unavailable",
-        "videounavailable",
-        "videounplayable",
-        "age restricted",
-    )
-    if any(marker in text for marker in subtitle_missing_markers):
-        return SubtitleUnavailableError("No subtitles are available for this video.", code="no_subtitles")
-
     return SubtitleUnavailableError("No subtitles are available for this video.", code="subtitle_unavailable")
 
 
-def _fetch_transcript_sync(video_id: str) -> tuple[str, str]:
-    last_error: Exception | None = None
-
-    if YouTubeTranscriptApi is None:
-        last_error = RuntimeError("youtube-transcript-api is not installed")
-    else:
-        # Prefer manual English captions, then generated/translated english.
-        api = _api_client()
-
-        # New/legacy listing APIs.
-        transcript_list = None
-        try:
-            if hasattr(api, "list"):
-                transcript_list = api.list(video_id)
-            elif hasattr(api, "list_transcripts"):
-                transcript_list = api.list_transcripts(video_id)
-        except Exception as exc:
-            last_error = exc
-            logger.warning("youtube transcript list failed for %s: %s", video_id, exc)
-
-        if transcript_list is not None:
-            try:
-                manual = transcript_list.find_manually_created_transcript(["en"])
-                return _fetch_from_transcript_obj(manual, "youtube_manual")
-            except Exception as exc:
-                last_error = exc
-            try:
-                generated = transcript_list.find_generated_transcript(["en"])
-                return _fetch_from_transcript_obj(generated, "youtube_auto")
-            except Exception as exc:
-                last_error = exc
-            try:
-                preferred = transcript_list.find_transcript(["en"])
-                src = "youtube_auto" if getattr(preferred, "is_generated", False) else "youtube_manual"
-                return _fetch_from_transcript_obj(preferred, src)
-            except Exception as exc:
-                last_error = exc
-            try:
-                translated = transcript_list.find_transcript(["vi", "es", "fr", "de", "ja", "ko"])
-                return _fetch_from_transcript_obj(translated.translate("en"), "youtube_translated")
-            except Exception as exc:
-                last_error = exc
-            try:
-                return _fetch_generated_transcript_any_language(transcript_list)
-            except Exception as exc:
-                last_error = exc
-
-        # v1.x direct API.
-        try:
-            if hasattr(api, "fetch"):
-                fetched = api.fetch(video_id, languages=["en"])
-                text = _normalize_transcript_segments(fetched)
-                if text:
-                    return text, "youtube_auto"
-        except Exception as exc:
-            last_error = exc
-            logger.warning("youtube transcript fetch() failed for %s: %s", video_id, exc)
-
-        # Compatibility fallback for older API surface.
-        try:
-            rows = api.get_transcript(video_id, languages=["en"])  # type: ignore[attr-defined]
-            text = _normalize_transcript_segments(rows)
-            if text:
-                return text, "youtube_auto"
-        except Exception as exc:
-            last_error = exc
-
-    try:
-        return _fetch_timedtext_transcript(video_id)
-    except Exception as exc:
-        if last_error is None:
-            last_error = exc
-
-    raise _classify_caption_error(last_error or RuntimeError("subtitle unavailable"))
-
-
-async def _run_in_thread_with_timeout(func, timeout_seconds: float, *args):
-    return await asyncio.wait_for(
-        asyncio.to_thread(func, *args),
-        timeout=timeout_seconds,
+async def _fetch_subtitles(video_id: str) -> str:
+    if _ytt is None:
+        raise RuntimeError("youtube-transcript-api is not installed or failed to initialize")
+    fetched = await asyncio.to_thread(
+        _ytt.fetch,
+        video_id,
+        languages=["en", "en-US", "en-GB", "a.en"],
     )
+    raw = fetched.to_raw_data()
+    text = " ".join(str(t.get("text", "")).strip() for t in raw if str(t.get("text", "")).strip())
+    if not text:
+        raise RuntimeError("Transcript fetch returned empty content")
+    return text
+
+
+async def _fetch_with_backoff(video_id: str, max_attempts: int = 3) -> str:
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            return await asyncio.wait_for(
+                _fetch_subtitles(video_id),
+                timeout=settings.subtitle_fetch_timeout_per_attempt_seconds,
+            )
+        except _PERMANENT_ERRORS:
+            raise
+        except Exception as exc:
+            last_exc = exc
+            if attempt == max_attempts - 1:
+                break
+            wait_seconds = (2**attempt) + random.uniform(0, 0.5)
+            logger.warning(
+                "Subtitle fetch attempt %d failed for video_id=%s, retrying in %.1fs: %s",
+                attempt + 1,
+                video_id,
+                wait_seconds,
+                exc,
+            )
+            await asyncio.sleep(wait_seconds)
+
+    if last_exc is None:
+        raise RuntimeError("subtitle fetch failed")
+    raise last_exc
+
+
+async def get_subtitles(video_id: str) -> str:
+    with _cache_lock:
+        cached = _subtitle_cache.get(video_id)
+    if isinstance(cached, str) and cached.strip():
+        logger.info("[subtitle_cache] HIT video_id=%s", video_id)
+        return cached
+    if cached is not None:
+        logger.warning("[subtitle_cache] CORRUPT_EMPTY video_id=%s evicting", video_id)
+        with _cache_lock:
+            _subtitle_cache.pop(video_id, None)
+
+    logger.info("[subtitle_cache] MISS video_id=%s", video_id)
+
+    async with asyncio.timeout(settings.subtitle_fetch_total_timeout_seconds):
+        result = await _fetch_with_backoff(video_id)
+
+    normalized = result.strip()
+    if not normalized:
+        raise RuntimeError("Subtitle fetch returned empty content")
+
+    with _cache_lock:
+        _subtitle_cache[video_id] = normalized
+
+    return normalized
 
 
 async def build_subtitle_payload(youtube_url: str) -> SubtitlePayload:
-    settings = get_settings()
     try:
         video_id = extract_video_id(youtube_url)
     except ValueError as exc:
         raise SubtitleUnavailableError("Invalid YouTube URL.", code="invalid_url") from exc
 
     try:
-        title = await _run_in_thread_with_timeout(
-            _fetch_video_title,
-            settings.subtitle_title_timeout_seconds,
-            youtube_url,
+        title = await asyncio.wait_for(
+            asyncio.to_thread(_fetch_video_title, youtube_url),
+            timeout=settings.subtitle_title_timeout_seconds,
         )
     except asyncio.TimeoutError:
         logger.warning(
@@ -340,25 +226,18 @@ async def build_subtitle_payload(youtube_url: str) -> SubtitlePayload:
             settings.subtitle_title_timeout_seconds,
         )
         title = None
+
     if not title:
         title = _fallback_title(video_id)
-    thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
 
     try:
-        transcript, subtitle_source = await _run_in_thread_with_timeout(
-            _fetch_transcript_sync,
-            settings.subtitle_fetch_timeout_seconds,
-            video_id,
-        )
+        transcript = await get_subtitles(video_id)
     except asyncio.TimeoutError as exc:
         raise SubtitleUnavailableError(
             "Subtitle fetch timed out. Check network connectivity and retry.",
             code="network_timeout",
         ) from exc
-    except SubtitleUnavailableError:
-        raise
     except Exception as exc:
-        logger.warning("subtitle fetch failed for %s (%s): %s", youtube_url, video_id, exc)
         raise _classify_caption_error(exc) from exc
 
     transcript = transcript[: settings.test_transcript_max_chars].strip()
@@ -369,7 +248,7 @@ async def build_subtitle_payload(youtube_url: str) -> SubtitlePayload:
         title=title,
         youtube_url=youtube_url.strip(),
         video_id=video_id,
-        thumbnail_url=thumbnail_url,
-        subtitle_source=subtitle_source,
+        thumbnail_url=f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+        subtitle_source="youtube_auto",
         raw_transcript=transcript,
     )

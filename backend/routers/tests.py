@@ -54,7 +54,7 @@ from backend.services.subtitle_service import (
     SubtitleUnavailableError,
     build_subtitle_payload,
 )
-from backend.services.xp_engine import award_xp
+from backend.services.xp_engine import XpReason, award_xp
 
 router = APIRouter()
 
@@ -630,7 +630,7 @@ async def submit_attempt(
         family_id=membership.family_id,
         user_id=current_user.id,
         delta=xp_earned,
-        reason=f"test_submit:{test.id}",
+        reason=XpReason.TEST_SUBMIT,
         source_id=attempt.id,
         db=db,
     )
@@ -652,6 +652,11 @@ async def submit_attempt(
     )
     await emit_family_event(
         membership.family_id,
+        "xp_earned",
+        {"userId": current_user.id, "delta": xp_earned, "reason": "test_complete"},
+    )
+    await emit_family_event(
+        membership.family_id,
         "leaderboard_update",
         {"userId": current_user.id},
     )
@@ -662,7 +667,7 @@ async def submit_attempt(
         score_raw=correct,
         score_pct=round(score_pct, 2),
         xp_earned=xp_earned,
-        total_xp=level_row.total_xp,
+        xp_balance=level_row.xp_balance,
         level=level_row.level,
     )
 
@@ -944,11 +949,11 @@ async def resolve_reopen_request(
                 family_id=assignment.family_id,
                 user_id=assignment.user_id,
                 delta=xp_delta,
-                reason=f"test_reopen_revoke:{test_id}",
+                reason=XpReason.TEST_REOPEN,
                 source_id=attempt.id,
                 db=db,
             )
-            total_xp = level_state.total_xp
+            xp_balance = level_state.xp_balance
             level = level_state.level
         else:
             current = (
@@ -959,7 +964,7 @@ async def resolve_reopen_request(
                     )
                 )
             ).scalar_one_or_none()
-            total_xp = current.total_xp if current else 0
+            xp_balance = current.xp_balance if current else 0
             level = current.level if current else 1
 
         assignment.status = "pending"
@@ -975,7 +980,7 @@ async def resolve_reopen_request(
                 )
             )
         ).scalar_one_or_none()
-        total_xp = current.total_xp if current else 0
+        xp_balance = current.xp_balance if current else 0
         level = current.level if current else 1
 
     db.add(
@@ -1019,6 +1024,6 @@ async def resolve_reopen_request(
         ),
         assignment_status=assignment.status,
         xp_delta=xp_delta,
-        total_xp=total_xp,
+        xp_balance=xp_balance,
         level=level,
     )

@@ -38,10 +38,10 @@ export function Sidebar() {
     familyId != null && pathname.startsWith(`/families/${familyId}/dashboard`);
   const leaderboard = useLeaderboard(familyId, "family");
   const myEntry = (leaderboard.data?.items ?? []).find((item) => item.isYou) ?? null;
-  const progress = myEntry ? xpProgress(myEntry.xp, myEntry.level) : null;
   const level = myEntry?.level ?? 1;
-  const currentXp = progress?.current ?? 0;
-  const xpToNext = progress?.required ?? 100;
+  const balance = myEntry?.xp ?? 0;
+  const xpToNext = 50 * Math.max(level, 1);
+  const currentXp = Math.min(balance, xpToNext);
   const streak = myEntry?.currentStreak ?? 0;
 
   return (
@@ -133,19 +133,11 @@ export function Sidebar() {
             </div>
             <XPBar currentXP={currentXp} maxXP={xpToNext} level={level} size="sm" showNumbers={false} />
             <div className="text-xs text-muted-foreground tabular-nums">
-              {currentXp} / {xpToNext} XP
+              {balance} XP balance
             </div>
           </div>
         </div>
       )}
     </aside>
   );
-}
-
-function xpProgress(totalXp: number, level: number): { current: number; required: number } {
-  const safeLevel = Math.max(level, 1);
-  const prevLevelsXp = (100 * (safeLevel - 1) * safeLevel) / 2;
-  const required = 100 * safeLevel;
-  const current = Math.max(0, Math.min(totalXp - prevLevelsXp, required));
-  return { current, required };
 }

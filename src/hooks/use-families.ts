@@ -112,10 +112,11 @@ export function useFamilyActivity(
   familyId: number | null,
   type: "activity" | "audit",
   enabled: boolean,
+  limit = 20,
 ) {
   return useQuery({
-    queryKey: ["family-activity", type, familyId],
-    queryFn: () => apiRequest<ActivityPage>(`/api/families/${familyId}/${type}?limit=20`),
+    queryKey: ["family-activity", type, familyId, limit],
+    queryFn: () => apiRequest<ActivityPage>(`/api/families/${familyId}/${type}?limit=${limit}`),
     enabled: !!familyId && enabled,
   });
 }

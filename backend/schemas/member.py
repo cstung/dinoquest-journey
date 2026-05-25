@@ -27,3 +27,8 @@ class MemberRoleUpdate(APIModel):
             raise ValueError("Role must be parent or child")
         return role
 
+
+class LevelUpOut(APIModel):
+    new_level: int
+    xp_spent: int
+    xp_balance: int

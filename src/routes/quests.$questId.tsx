@@ -20,6 +20,15 @@ type ActionResult = {
   variant: ActionResultVariant;
 };
 
+type QuestStatus = "pending" | "pending_approval" | "completed" | "missed";
+
+function getStatusLabel(status: QuestStatus, isParent: boolean): string {
+  if (status === "pending") return isParent ? "Not Yet Done" : "In Progress";
+  if (status === "pending_approval") return "Reviewing";
+  if (status === "completed") return "Completed";
+  return isParent ? "Overdue" : "Missed";
+}
+
 function QuestDetail() {
   const nav = useNavigate();
   const { questId } = useParams({ from: "/quests/$questId" });
@@ -76,16 +85,17 @@ function QuestDetail() {
       </div>
     );
   }
-  const canComplete = role === "child" && quest.status === "pending";
-  const canManage = role === "parent" || role === "superadmin";
+  const isParent = role === "parent" || role === "superadmin";
+  const canComplete = role === "child" && myAssignment?.status === "pending";
+  const canManage = isParent;
 
   const onComplete = async () => {
     setActionResult(null);
     try {
       await completeMutation.mutateAsync();
       setActionResult({
-        title: "Pending Approval",
-        message: "Completion request sent. Waiting for parent approval.",
+        title: "Submitted",
+        message: "Submitted! Waiting for a parent to review. 📬",
         variant: "warning",
       });
       await query.refetch();
@@ -321,30 +331,38 @@ function QuestDetail() {
                   </span>
                   <span className="flex-1 font-bold text-sm">{m.username}</span>
                   <span className="text-xs font-bold text-muted-foreground capitalize">
-                    {m.status}
+                    {getStatusLabel(m.status as QuestStatus, isParent)}
                   </span>
                 </li>
               ))}
             </ul>
           </div>
 
-          {canComplete ? (
+          {role === "child" ? (
             <button
               onClick={onComplete}
-              disabled={completeMutation.isPending || !myAssignment}
-              className="w-full rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase py-4 btn-pop disabled:opacity-60"
+              disabled={completeMutation.isPending || !myAssignment || !canComplete}
+              aria-disabled={completeMutation.isPending || !myAssignment || !canComplete}
+              title={
+                !myAssignment
+                  ? "Quest is not assigned to you"
+                  : myAssignment.status === "pending_approval"
+                    ? "Already submitted"
+                    : myAssignment.status === "completed"
+                      ? "Already completed"
+                      : myAssignment.status === "missed"
+                        ? "Quest is overdue"
+                        : completeMutation.isPending
+                          ? "Request in progress"
+                          : ""
+              }
+              className="w-full rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase py-4 btn-pop disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {completeMutation.isPending ? "Requesting..." : "Mark as Complete"}
+              {completeMutation.isPending ? "Requesting..." : "✅ I'm Done!"}
             </button>
           ) : (
             <div className="w-full rounded-2xl bg-secondary font-display font-extrabold uppercase py-4 text-center">
-              {quest.status === "completed"
-                ? "Completed"
-                : quest.status === "pending_approval"
-                  ? "Pending Approval"
-                  : quest.status === "missed"
-                    ? "Missed"
-                    : "Parent View"}
+              {getStatusLabel(quest.status as QuestStatus, true)}
             </div>
           )}
           {canManage && !editMode && (

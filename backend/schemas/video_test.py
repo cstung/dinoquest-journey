@@ -271,7 +271,7 @@ class TestSubmitOut(APIModel):
     score_raw: int
     score_pct: float
     xp_earned: int
-    total_xp: int
+    xp_balance: int
     level: int
 
 
@@ -333,7 +333,7 @@ class TestReopenResolveOut(APIModel):
     request: TestReopenRequestOut
     assignment_status: str
     xp_delta: int
-    total_xp: int
+    xp_balance: int
     level: int
 
 

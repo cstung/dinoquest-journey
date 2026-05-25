@@ -38,7 +38,10 @@ class Settings(BaseSettings):
     whisper_model: str = "whisper-1"
     test_transcript_max_chars: int = 12000
     subtitle_title_timeout_seconds: float = 4.0
-    subtitle_fetch_timeout_seconds: float = 6.0
+    subtitle_fetch_timeout_per_attempt_seconds: float = 8.0
+    subtitle_fetch_total_timeout_seconds: float = 20.0
+    subtitle_cache_ttl_seconds: int = 3600
+    subtitle_cache_max_size: int = 256
     vapid_private_key: str = ""
     vapid_public_key: str = ""
     vapid_claims_email: str = "admin@dinoquest.local"

@@ -1,22 +1,23 @@
 from __future__ import annotations
 
+from enum import Enum
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models import UserFamilyLevel, XpEvent
 
 
-def level_from_total_xp(total_xp: int) -> int:
-    # Level progression: level-up threshold increases linearly:
-    # L1 starts at 0 XP; to reach next level requires 100*current_level XP.
-    level = 1
-    remaining = max(total_xp, 0)
-    threshold = 100
-    while remaining >= threshold:
-        remaining -= threshold
-        level += 1
-        threshold = 100 * level
-    return level
+class XpReason(str, Enum):
+    QUEST_COMPLETE = "quest_complete"
+    TEST_SUBMIT = "test_submit"
+    REWARD_CLAIM = "reward_claim"
+    TEST_REOPEN = "test_reopen_revoke"
+    LEVEL_UP = "level_up"
+
+
+def xp_cost_for_level_up(current_level: int) -> int:
+    return 50 * max(current_level, 1)
 
 
 async def award_xp(
@@ -24,16 +25,18 @@ async def award_xp(
     family_id: int,
     user_id: int,
     delta: int,
-    reason: str,
+    reason: XpReason,
     db: AsyncSession,
     source_id: int | None = None,
+    note: str | None = None,
 ) -> UserFamilyLevel:
     event = XpEvent(
         family_id=family_id,
         user_id=user_id,
         delta=delta,
-        reason=reason,
+        reason=reason.value,
         source_id=source_id,
+        note=note,
     )
     db.add(event)
 
@@ -47,11 +50,11 @@ async def award_xp(
     ).scalar_one_or_none()
 
     if not level_row:
-        level_row = UserFamilyLevel(family_id=family_id, user_id=user_id, total_xp=0, level=1)
+        level_row = UserFamilyLevel(family_id=family_id, user_id=user_id, xp_balance=0, level=1)
         db.add(level_row)
 
-    level_row.total_xp = max(level_row.total_xp + delta, 0)
-    level_row.level = level_from_total_xp(level_row.total_xp)
+    level_row.xp_balance = max(level_row.xp_balance + delta, 0)
+    if level_row.level < 1:
+        level_row.level = 1
     await db.flush()
     return level_row
-
