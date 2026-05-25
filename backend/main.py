@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from backend.config import get_settings
@@ -24,6 +26,7 @@ from backend.routers import (
     quests,
     rewards,
     tests,
+    users,
     ws,
 )
 
@@ -53,7 +56,16 @@ def create_app() -> FastAPI:
     app.include_router(pets.router, prefix="/api/families", tags=["pets"])
     app.include_router(rewards.router, prefix="/api/families", tags=["rewards"])
     app.include_router(leaderboard.router, prefix="/api/families", tags=["leaderboard"])
+    app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(ws.router, tags=["ws"])
+
+    data_dir = Path(settings.db_path).expanduser()
+    if data_dir == Path(":memory:"):
+        static_dir = Path("./data").resolve()
+    else:
+        static_dir = data_dir.resolve().parent
+    static_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=str(static_dir)), name="uploads")
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
