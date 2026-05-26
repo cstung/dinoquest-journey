@@ -31,7 +31,6 @@ import {
   Sparkles,
   ListChecks,
   Video,
-  Gift,
   Star,
   TrendingUp,
   Save,
@@ -57,21 +56,12 @@ import {
   SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { ApiError, apiRequest } from "@/lib/api";
-import { useAwardParentReward } from "@/hooks/use-families";
 
 export const Route = createFileRoute("/profile/$userId")({
   head: () => ({
@@ -575,10 +565,7 @@ function KidProfilePage() {
   const updateProfile = (vals: Partial<ProfileData>) => updateProfileMutation.mutate(vals);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [rewardDrawerOpen, setRewardDrawerOpen] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
-  const awardParentReward = useAwardParentReward(activeFamilyId, numericId);
-  const canAwardDirectReward = canManageFamilyProfiles && !isSelf && !!activeFamilyId;
 
   const daysLeft = resolvedProfile ? daysUntilBirthday(resolvedProfile.birthday) : null;
   useEffect(() => {
@@ -640,9 +627,7 @@ function KidProfilePage() {
           rank={rank}
           familyName={activeFamilyName}
           isSelf={isSelf}
-          canGiveXp={canAwardDirectReward}
           onEdit={() => setDrawerOpen(true)}
-          onGiveXp={() => setRewardDrawerOpen(true)}
           onAvatarUpload={(file) => avatarMutation.mutate(file)}
         />
 
@@ -757,25 +742,6 @@ function KidProfilePage() {
             userId={String(userId)}
           />
         )}
-        {canAwardDirectReward && (
-          <GiveXpDrawer
-            open={rewardDrawerOpen}
-            onOpenChange={setRewardDrawerOpen}
-            child={resolvedProfile}
-            isPending={awardParentReward.isPending}
-            onSubmit={async (vals) => {
-              const result = await awardParentReward.mutateAsync(vals);
-              toast.success(
-                result.coinsAwarded > 0
-                  ? `Awarded ${result.xpAwarded.toLocaleString()} XP and ${result.coinsAwarded.toLocaleString()} coins.`
-                  : `Awarded ${result.xpAwarded.toLocaleString()} XP.`,
-              );
-              setRewardDrawerOpen(false);
-              setCelebrate(true);
-              window.setTimeout(() => setCelebrate(false), 2500);
-            }}
-          />
-        )}
       </div>
     </TooltipProvider>
   );
@@ -846,18 +812,14 @@ function IdentityBlock({
   rank,
   familyName,
   isSelf,
-  canGiveXp,
   onEdit,
-  onGiveXp,
   onAvatarUpload,
 }: {
   profile: ProfileData;
   rank: string;
   familyName: string;
   isSelf: boolean;
-  canGiveXp: boolean;
   onEdit: () => void;
-  onGiveXp: () => void;
   onAvatarUpload: (file: File) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -931,24 +893,14 @@ function IdentityBlock({
           </div>
         </div>
 
-        {(isSelf || canGiveXp) && (
-          <div className="md:self-center flex flex-wrap gap-2">
-            {canGiveXp && (
-              <Button
-                onClick={onGiveXp}
-                className="rounded-2xl shadow-pop-sm h-11 px-5 font-display font-extrabold uppercase bg-purple hover:bg-purple/90 text-white"
-              >
-                <Gift className="size-4" /> Give XP
-              </Button>
-            )}
-            {isSelf && (
-              <Button
-                onClick={onEdit}
-                className="rounded-2xl shadow-pop-sm h-11 px-5 font-display font-extrabold uppercase"
-              >
-                <Pencil className="size-4" /> Edit profile
-              </Button>
-            )}
+        {isSelf && (
+          <div className="md:self-center">
+            <Button
+              onClick={onEdit}
+              className="rounded-2xl shadow-pop-sm h-11 px-5 font-display font-extrabold uppercase"
+            >
+              <Pencil className="size-4" /> Edit profile
+            </Button>
           </div>
         )}
       </div>
@@ -1288,194 +1240,6 @@ function ActivityFeed({ events }: { events: ActivityEv[] }) {
         </ul>
       )}
     </Card>
-  );
-}
-
-// ---------- Give XP Drawer ----------
-
-const MAX_PARENT_REWARD_VALUE = 10_000_000;
-const XP_QUICK_ADD = [10_000, 25_000, 50_000, 100_000];
-const COIN_QUICK_ADD = [10_000, 25_000, 50_000, 100_000];
-
-const giveXpSchema = z.object({
-  xp: z.coerce.number().int().min(1, "XP must be at least 1").max(MAX_PARENT_REWARD_VALUE),
-  coins: z.coerce.number().int().min(0, "Coins cannot be negative").max(MAX_PARENT_REWARD_VALUE),
-  reason: z
-    .string()
-    .max(100, "Reason must be 100 characters or fewer")
-    .optional()
-    .or(z.literal("")),
-});
-
-type GiveXpValues = z.infer<typeof giveXpSchema>;
-
-function GiveXpDrawer({
-  open,
-  onOpenChange,
-  child,
-  isPending,
-  onSubmit,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  child: ProfileData;
-  isPending: boolean;
-  onSubmit: (values: { xp: number; coins: number; reason?: string }) => Promise<void>;
-}) {
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    reset,
-    watch,
-    formState: { errors },
-  } = useForm<GiveXpValues>({
-    resolver: zodResolver(giveXpSchema),
-    defaultValues: {
-      xp: 10_000,
-      coins: 0,
-      reason: "",
-    },
-  });
-
-  useEffect(() => {
-    if (open) {
-      reset({ xp: 10_000, coins: 0, reason: "" });
-    }
-  }, [open, reset]);
-
-  const xp = watch("xp") ?? 0;
-  const coins = watch("coins") ?? 0;
-  const initial = child.nickname?.[0]?.toUpperCase() ?? "?";
-
-  const submit = handleSubmit(async (values) => {
-    const normalizedReason = values.reason?.trim();
-    await onSubmit({
-      xp: values.xp,
-      coins: values.coins,
-      reason: normalizedReason ? normalizedReason : undefined,
-    });
-  });
-
-  return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="mx-auto w-full max-w-xl">
-        <DrawerHeader>
-          <div className="flex items-center gap-3">
-            <div className="size-12 rounded-2xl border-2 border-foreground/10 bg-gradient-to-br from-primary to-primary-dark text-white grid place-items-center font-display font-black text-xl overflow-hidden">
-              {child.avatar_url ? (
-                <img src={child.avatar_url} alt="" className="size-full object-cover" />
-              ) : (
-                initial
-              )}
-            </div>
-            <div>
-              <DrawerTitle className="font-display font-black text-xl">Give XP</DrawerTitle>
-              <DrawerDescription>{child.nickname}</DrawerDescription>
-            </div>
-          </div>
-        </DrawerHeader>
-        <form onSubmit={submit} className="px-4 pb-4 space-y-4">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
-              XP amount
-            </Label>
-            <Input type="number" min={1} max={MAX_PARENT_REWARD_VALUE} {...register("xp")} />
-            <div className="flex flex-wrap gap-2">
-              {XP_QUICK_ADD.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() =>
-                    setValue(
-                      "xp",
-                      Math.min(MAX_PARENT_REWARD_VALUE, Math.max(1, Number(xp || 0) + value)),
-                      {
-                        shouldValidate: true,
-                        shouldDirty: true,
-                      },
-                    )
-                  }
-                  className="rounded-full border-2 border-border bg-secondary/60 px-3 py-1 text-xs font-extrabold"
-                >
-                  +{value.toLocaleString()}
-                </button>
-              ))}
-            </div>
-            {errors.xp?.message && (
-              <p className="text-xs font-bold text-destructive">{errors.xp.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
-              Coins (optional)
-            </Label>
-            <Input type="number" min={0} max={MAX_PARENT_REWARD_VALUE} {...register("coins")} />
-            <div className="flex flex-wrap gap-2">
-              {COIN_QUICK_ADD.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() =>
-                    setValue(
-                      "coins",
-                      Math.min(MAX_PARENT_REWARD_VALUE, Math.max(0, Number(coins || 0) + value)),
-                      {
-                        shouldValidate: true,
-                        shouldDirty: true,
-                      },
-                    )
-                  }
-                  className="rounded-full border-2 border-border bg-secondary/60 px-3 py-1 text-xs font-extrabold"
-                >
-                  +{value.toLocaleString()}
-                </button>
-              ))}
-            </div>
-            {errors.coins?.message && (
-              <p className="text-xs font-bold text-destructive">{errors.coins.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
-              Reason / note
-            </Label>
-            <Textarea
-              rows={2}
-              maxLength={100}
-              placeholder="e.g. Helped carry groceries 🛒"
-              {...register("reason")}
-            />
-            {errors.reason?.message && (
-              <p className="text-xs font-bold text-destructive">{errors.reason.message}</p>
-            )}
-          </div>
-
-          <DrawerFooter className="px-0 pb-0">
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => onOpenChange(false)}
-                className="flex-1"
-                disabled={isPending}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                className="flex-1 bg-purple hover:bg-purple/90 text-white"
-                disabled={isPending}
-              >
-                {isPending ? "Awarding..." : "Award XP"}
-              </Button>
-            </div>
-          </DrawerFooter>
-        </form>
-      </DrawerContent>
-    </Drawer>
   );
 }
 

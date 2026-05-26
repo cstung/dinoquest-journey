@@ -1,6 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { formatDistanceToNow, format } from "date-fns";
 import {
   Image as ImageIcon,
@@ -20,6 +23,7 @@ import {
   AlertCircle,
   WifiOff,
   ChevronRight,
+  Gift,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +36,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -49,6 +61,7 @@ import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
 import { MOOD_ICON_OPTIONS } from "@/lib/mood-icons";
 import { useAuthStore, useFamilyStore } from "@/store";
+import { useAwardParentReward } from "@/hooks/use-families";
 
 export const Route = createFileRoute("/families_/$familyId/dashboard")({
   head: () => ({
@@ -144,6 +157,22 @@ interface PostPayload {
   tags: Tag[];
   postType: PostType;
 }
+
+const MAX_PARENT_REWARD_VALUE = 10_000_000;
+const REWARD_QUICK_ADD = [10_000, 25_000, 50_000, 100_000];
+
+const giveXpSchema = z.object({
+  childUserId: z.coerce.number().int().positive(),
+  xp: z.coerce.number().int().min(1, "XP must be at least 1").max(MAX_PARENT_REWARD_VALUE),
+  coins: z.coerce.number().int().min(0, "Coins cannot be negative").max(MAX_PARENT_REWARD_VALUE),
+  reason: z
+    .string()
+    .max(100, "Reason must be 100 characters or fewer")
+    .optional()
+    .or(z.literal("")),
+});
+
+type GiveXpValues = z.infer<typeof giveXpSchema>;
 // ============================================================
 // Page root
 // ============================================================
@@ -164,6 +193,8 @@ function FamilyDashboardPage() {
   const [pendingPosts, setPendingPosts] = useState<WallPost[]>([]);
   const [wsConnected, setWsConnected] = useState(true);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; caption: string } | null>(null);
+  const [rewardDrawerOpen, setRewardDrawerOpen] = useState(false);
+  const [selectedRewardChildId, setSelectedRewardChildId] = useState<number | null>(null);
 
   useEffect(() => {
     openThreadsRef.current = openThreads;
@@ -171,8 +202,7 @@ function FamilyDashboardPage() {
 
   const { data: familyData } = useQuery({
     queryKey: ["family", familyId],
-    queryFn: () =>
-      apiRequest<FamilyDashboardFamily>(`/api/families/${familyId}`),
+    queryFn: () => apiRequest<FamilyDashboardFamily>(`/api/families/${familyId}`),
     enabled: hasValidFamilyId && !!user,
   });
   const family = familyData
@@ -183,7 +213,8 @@ function FamilyDashboardPage() {
 
   const { data: membersData } = useQuery({
     queryKey: ["family-members", familyId],
-    queryFn: () => apiRequest<ApiMember[] | { members: Member[] }>(`/api/families/${familyId}/members`),
+    queryFn: () =>
+      apiRequest<ApiMember[] | { members: Member[] }>(`/api/families/${familyId}/members`),
     enabled: hasValidFamilyId && !!user,
   });
   const members: Member[] = Array.isArray(membersData)
@@ -194,9 +225,24 @@ function FamilyDashboardPage() {
         role: member.role,
       }))
     : (membersData?.members ?? []);
+  const childMembers = members.filter((member) => member.role === "child");
+  const awardParentReward = useAwardParentReward(familyId, selectedRewardChildId);
+
+  useEffect(() => {
+    if (childMembers.length === 0) {
+      setSelectedRewardChildId(null);
+      return;
+    }
+    if (
+      selectedRewardChildId == null ||
+      !childMembers.some((child) => child.id === selectedRewardChildId)
+    ) {
+      setSelectedRewardChildId(childMembers[0].id);
+    }
+  }, [childMembers, selectedRewardChildId]);
 
   const memberById = (id: number | null) =>
-    id == null ? null : members.find((m) => m.id === id) ?? null;
+    id == null ? null : (members.find((m) => m.id === id) ?? null);
 
   const { data: feedData, isLoading: feedLoading } = useQuery({
     queryKey: ["wall-feed", familyId, page],
@@ -287,17 +333,28 @@ function FamilyDashboardPage() {
         method: "DELETE",
       }),
     onSuccess: (_, postId) => {
-      queryClient.setQueryData(["wall-feed", familyId, page], (old: { posts?: WallPost[]; hasMore?: boolean } | undefined) => ({
-        posts: old?.posts?.filter((p) => p.id !== postId) ?? [],
-        hasMore: old?.hasMore ?? hasMore,
-      }));
+      queryClient.setQueryData(
+        ["wall-feed", familyId, page],
+        (old: { posts?: WallPost[]; hasMore?: boolean } | undefined) => ({
+          posts: old?.posts?.filter((p) => p.id !== postId) ?? [],
+          hasMore: old?.hasMore ?? hasMore,
+        }),
+      );
       toast.success("Post deleted");
     },
     onError: () => toast.error("Could not delete post."),
   });
 
   const reactMutation = useMutation({
-    mutationFn: ({ postId, emoji, isRemoving }: { postId: number; emoji: string; isRemoving: boolean }) =>
+    mutationFn: ({
+      postId,
+      emoji,
+      isRemoving,
+    }: {
+      postId: number;
+      emoji: string;
+      isRemoving: boolean;
+    }) =>
       isRemoving
         ? apiRequest<void>(`/api/families/${familyId}/wall-posts/${postId}/reactions`, {
             method: "DELETE",
@@ -320,7 +377,9 @@ function FamilyDashboardPage() {
       }),
     onMutate: async ({ postId, optimisticComment }) => {
       setCommentsByPost((m) => ({ ...m, [postId]: [...(m[postId] ?? []), optimisticComment] }));
-      setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, commentCount: p.commentCount + 1 } : p)));
+      setPosts((prev) =>
+        prev.map((p) => (p.id === postId ? { ...p, commentCount: p.commentCount + 1 } : p)),
+      );
       return { postId, optimisticId: optimisticComment.id };
     },
     onSuccess: (saved, vars, ctx) => {
@@ -336,9 +395,10 @@ function FamilyDashboardPage() {
             return c;
           });
           const withSaved = replaced ? next : [...next, saved];
-          return withSaved.filter((comment, index, list) => (
-            list.findIndex((candidate) => candidate.id === comment.id) === index
-          ));
+          return withSaved.filter(
+            (comment, index, list) =>
+              list.findIndex((candidate) => candidate.id === comment.id) === index,
+          );
         })(),
       }));
     },
@@ -347,7 +407,11 @@ function FamilyDashboardPage() {
         ...m,
         [vars.postId]: (m[vars.postId] ?? []).filter((c) => c.id !== ctx?.optimisticId),
       }));
-      setPosts((prev) => prev.map((p) => (p.id === vars.postId ? { ...p, commentCount: Math.max(0, p.commentCount - 1) } : p)));
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === vars.postId ? { ...p, commentCount: Math.max(0, p.commentCount - 1) } : p,
+        ),
+      );
       queryClient.invalidateQueries({ queryKey: ["wall-feed", familyId] });
       toast.error("Could not post comment.");
     },
@@ -363,7 +427,11 @@ function FamilyDashboardPage() {
         ...m,
         [postId]: (m[postId] ?? []).filter((c) => c.id !== commentId),
       }));
-      setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, commentCount: Math.max(0, p.commentCount - 1) } : p)));
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId ? { ...p, commentCount: Math.max(0, p.commentCount - 1) } : p,
+        ),
+      );
     },
     onError: () => toast.error("Could not delete comment."),
   });
@@ -427,18 +495,25 @@ function FamilyDashboardPage() {
 
   const newPostsCount = pendingPosts.length;
   const acceptPending = () => {
-    setPosts((p) => [...pendingPosts.filter((post) => !p.some((existing) => existing.id === post.id)), ...p]);
+    setPosts((p) => [
+      ...pendingPosts.filter((post) => !p.some((existing) => existing.id === post.id)),
+      ...p,
+    ]);
     setPendingPosts([]);
   };
 
   const handleReact = (postId: number, emoji: string) => {
-    const existing = posts.find((p) => p.id === postId)?.reactionCounts.find((r) => r.emoji === emoji);
+    const existing = posts
+      .find((p) => p.id === postId)
+      ?.reactionCounts.find((r) => r.emoji === emoji);
     const isRemoving = !!existing?.reactedByMe;
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id !== postId) return p;
         let updated = p.reactionCounts.map((r) =>
-          r.reactedByMe && r.emoji !== emoji ? { ...r, count: Math.max(0, r.count - 1), reactedByMe: false } : r,
+          r.reactedByMe && r.emoji !== emoji
+            ? { ...r, count: Math.max(0, r.count - 1), reactedByMe: false }
+            : r,
         );
         const target = p.reactionCounts.find((r) => r.emoji === emoji);
         if (target) {
@@ -535,7 +610,9 @@ function FamilyDashboardPage() {
       try {
         const tokenData = await apiRequest<{ wsToken: string }>("/api/auth/ws-token");
         if (closed) return;
-        ws = new WebSocket(`${wsBaseUrl()}/ws/families/${familyId}?token=${encodeURIComponent(tokenData.wsToken)}`);
+        ws = new WebSocket(
+          `${wsBaseUrl()}/ws/families/${familyId}?token=${encodeURIComponent(tokenData.wsToken)}`,
+        );
         ws.onopen = () => setWsConnected(true);
         ws.onclose = () => {
           setWsConnected(false);
@@ -559,9 +636,9 @@ function FamilyDashboardPage() {
               setPendingPosts((pending) => pending.filter((item) => item.id !== post.id));
               return;
             }
-            setPendingPosts((pending) => (
-              pending.some((item) => item.id === post.id) ? pending : [...pending, post]
-            ));
+            setPendingPosts((pending) =>
+              pending.some((item) => item.id === post.id) ? pending : [...pending, post],
+            );
             return;
           }
 
@@ -637,14 +714,24 @@ function FamilyDashboardPage() {
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
     };
-  }, [currentUserId, familyId, hasValidFamilyId, isAuthenticated, queryClient, refetchMoods, refetchPins]);
+  }, [
+    currentUserId,
+    familyId,
+    hasValidFamilyId,
+    isAuthenticated,
+    queryClient,
+    refetchMoods,
+    refetchPins,
+  ]);
 
   if (!hasValidFamilyId) {
     return (
       <div className="max-w-md mx-auto mt-20 text-center space-y-4 p-4">
         <h1 className="font-display font-extrabold text-2xl">Invalid family</h1>
         <p className="text-muted-foreground">Family id is missing from the URL.</p>
-        <Button asChild><Link to="/families">Choose family</Link></Button>
+        <Button asChild>
+          <Link to="/families">Choose family</Link>
+        </Button>
       </div>
     );
   }
@@ -679,7 +766,14 @@ function FamilyDashboardPage() {
         {/* LEFT — wall */}
         <div className="space-y-4 min-w-0">
           <ShoutoutComposer
-            currentUser={memberById(currentUserId) ?? { id: currentUserId, nickname: "You", color: "#1CB0F6", role: "parent" }}
+            currentUser={
+              memberById(currentUserId) ?? {
+                id: currentUserId,
+                nickname: "You",
+                color: "#1CB0F6",
+                role: "parent",
+              }
+            }
             members={members.filter((m) => m.id !== currentUserId)}
             onPost={async (payload) => {
               await postMutation.mutateAsync(payload);
@@ -731,7 +825,10 @@ function FamilyDashboardPage() {
 
           <div className="text-center pt-2">
             {/* TODO: build archived feed page */}
-            <Link to={`/families/${familyId}/dashboard/activity` as any} className="text-sm font-bold text-primary-dark hover:underline">
+            <Link
+              to={`/families/${familyId}/dashboard/activity` as any}
+              className="text-sm font-bold text-primary-dark hover:underline"
+            >
               View older activity →
             </Link>
           </div>
@@ -747,10 +844,31 @@ function FamilyDashboardPage() {
             onRemove={(id) => removePinMutation.mutate(id)}
             onCreate={(msg, exp) => createPinMutation.mutate({ message: msg, expiresAt: exp })}
           />
+          {isParent && (
+            <ParentRewardCard
+              childMembers={childMembers}
+              open={rewardDrawerOpen}
+              onOpenChange={setRewardDrawerOpen}
+              selectedChildId={selectedRewardChildId}
+              onSelectChild={setSelectedRewardChildId}
+              isPending={awardParentReward.isPending}
+              onSubmit={async (values) => {
+                const result = await awardParentReward.mutateAsync(values);
+                toast.success(
+                  result.coinsAwarded > 0
+                    ? `Awarded ${result.xpAwarded.toLocaleString()} XP and ${result.coinsAwarded.toLocaleString()} coins.`
+                    : `Awarded ${result.xpAwarded.toLocaleString()} XP.`,
+                );
+                setRewardDrawerOpen(false);
+              }}
+            />
+          )}
         </aside>
       </div>
 
-      {lightboxImage && <PhotoLightbox image={lightboxImage} onClose={() => setLightboxImage(null)} />}
+      {lightboxImage && (
+        <PhotoLightbox image={lightboxImage} onClose={() => setLightboxImage(null)} />
+      )}
     </div>
   );
 }
@@ -759,7 +877,11 @@ function FamilyDashboardPage() {
 // Header & banners
 // ============================================================
 
-function DashboardHeader({ family }: { family: { name: string; motto: string; colorHex: string } }) {
+function DashboardHeader({
+  family,
+}: {
+  family: { name: string; motto: string; colorHex: string };
+}) {
   return (
     <div
       className="rounded-3xl p-5 md:p-6 shadow-pop-sm border-2 border-foreground/5 relative overflow-hidden"
@@ -772,12 +894,17 @@ function DashboardHeader({ family }: { family: { name: string; motto: string; co
         <div className="flex items-center gap-3">
           <div
             className="size-14 rounded-2xl grid place-items-center text-2xl shadow-pop-sm border-2 border-card"
-            style={{ backgroundColor: family.colorHex, ["--shadow-color" as any]: "oklch(0 0 0 / 0.12)" }}
+            style={{
+              backgroundColor: family.colorHex,
+              ["--shadow-color" as any]: "oklch(0 0 0 / 0.12)",
+            }}
           >
             🦖
           </div>
           <div>
-            <div className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Family Yard</div>
+            <div className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              Family Yard
+            </div>
             <h1 className="font-display font-black text-2xl md:text-3xl">{family.name}</h1>
             <div className="text-sm text-muted-foreground font-medium">{family.motto}</div>
           </div>
@@ -824,12 +951,26 @@ function EmptyFeed() {
 
 function StatsSnapshot({ stats }: { stats: DashboardStats }) {
   const nav = useNavigate();
-  const Tile = ({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string | number; color: string }) => (
+  const Tile = ({
+    icon,
+    label,
+    value,
+    color,
+  }: {
+    icon: React.ReactNode;
+    label: string;
+    value: string | number;
+    color: string;
+  }) => (
     <div className="flex items-center gap-3 min-w-0">
-      <div className={cn("size-10 rounded-2xl grid place-items-center shrink-0", color)}>{icon}</div>
+      <div className={cn("size-10 rounded-2xl grid place-items-center shrink-0", color)}>
+        {icon}
+      </div>
       <div className="min-w-0">
         <div className="font-display font-black text-xl tabular-nums leading-none">{value}</div>
-        <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground truncate">{label}</div>
+        <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground truncate">
+          {label}
+        </div>
       </div>
     </div>
   );
@@ -839,10 +980,30 @@ function StatsSnapshot({ stats }: { stats: DashboardStats }) {
       className="w-full rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 md:p-5 grid grid-cols-2 md:grid-cols-4 gap-4 text-left hover:bg-secondary/40 transition"
       style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}
     >
-      <Tile icon={<Sparkles className="size-5 text-success-foreground" />} label="Quests this week" value={stats.questsCompletedThisWeek ?? 0} color="bg-success/20" />
-      <Tile icon={<Star className="size-5 text-warning-foreground" />} label="Family XP" value={stats.familyXpThisWeek ?? 0} color="bg-warning/20" />
-      <Tile icon={<Flame className="size-5 text-pink" />} label="Best streak" value={`${stats.bestStreakActive ?? 0}d`} color="bg-pink/20" />
-      <Tile icon={<Target className="size-5 text-info" />} label="Video quizzes this week" value={stats.testsTakenThisWeek ?? 0} color="bg-info/20" />
+      <Tile
+        icon={<Sparkles className="size-5 text-success-foreground" />}
+        label="Quests this week"
+        value={stats.questsCompletedThisWeek ?? 0}
+        color="bg-success/20"
+      />
+      <Tile
+        icon={<Star className="size-5 text-warning-foreground" />}
+        label="Family XP"
+        value={stats.familyXpThisWeek ?? 0}
+        color="bg-warning/20"
+      />
+      <Tile
+        icon={<Flame className="size-5 text-pink" />}
+        label="Best streak"
+        value={`${stats.bestStreakActive ?? 0}d`}
+        color="bg-pink/20"
+      />
+      <Tile
+        icon={<Target className="size-5 text-info" />}
+        label="Video quizzes this week"
+        value={stats.testsTakenThisWeek ?? 0}
+        color="bg-info/20"
+      />
     </button>
   );
 }
@@ -851,7 +1012,13 @@ function StatsSnapshot({ stats }: { stats: DashboardStats }) {
 // Mood
 // ============================================================
 
-function MoodCheckin({ myMood, onSubmit }: { myMood: string | null; onSubmit: (m: string) => void }) {
+function MoodCheckin({
+  myMood,
+  onSubmit,
+}: {
+  myMood: string | null;
+  onSubmit: (m: string) => void;
+}) {
   const [editing, setEditing] = useState(!isMoodIconValue(myMood));
   const [choices, setChoices] = useState(() => MOOD_ICON_OPTIONS.slice(0, 5));
 
@@ -869,8 +1036,10 @@ function MoodCheckin({ myMood, onSubmit }: { myMood: string | null; onSubmit: (m
   const shuffle = () => setChoices(pickMoodIcons());
 
   return (
-    <div className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 flex items-center justify-between gap-3 flex-wrap"
-      style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}>
+    <div
+      className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 flex items-center justify-between gap-3 flex-wrap"
+      style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}
+    >
       {editing ? (
         <>
           <div className="font-display font-extrabold text-sm">How are you feeling today?</div>
@@ -889,7 +1058,13 @@ function MoodCheckin({ myMood, onSubmit }: { myMood: string | null; onSubmit: (m
                 <MoodIcon value={m.value} label={m.label} sizeClass="size-8" />
               </button>
             ))}
-            <Button type="button" variant="secondary" size="sm" onClick={shuffle} className="rounded-xl font-bold">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={shuffle}
+              className="rounded-xl font-bold"
+            >
               Next
             </Button>
           </div>
@@ -897,9 +1072,13 @@ function MoodCheckin({ myMood, onSubmit }: { myMood: string | null; onSubmit: (m
       ) : (
         <>
           <div className="font-display font-extrabold text-sm flex items-center gap-2">
-            You're feeling <MoodIcon value={myMood} label={moodIconLabel(myMood)} sizeClass="size-9" /> today
+            You're feeling{" "}
+            <MoodIcon value={myMood} label={moodIconLabel(myMood)} sizeClass="size-9" /> today
           </div>
-          <button onClick={() => setEditing(true)} className="text-xs font-bold text-primary-dark hover:underline">
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs font-bold text-primary-dark hover:underline"
+          >
             Change
           </button>
         </>
@@ -916,8 +1095,10 @@ function FamilyMoodPanel({
   moods: Record<number, string | null>;
 }) {
   return (
-    <div className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 space-y-3"
-      style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}>
+    <div
+      className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 space-y-3"
+      style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}
+    >
       <h3 className="font-display font-extrabold text-sm uppercase tracking-wide flex items-center gap-2">
         Family vibes today
       </h3>
@@ -927,10 +1108,20 @@ function FamilyMoodPanel({
             <div className="relative">
               <Avatar nickname={m.nickname} color={m.color} size={44} />
               <span className="absolute -bottom-1 -right-1 bg-card rounded-full size-7 grid place-items-center border-2 border-card shadow-pop-sm p-0.5">
-                {isMoodIconValue(moods[m.id]) ? <MoodIcon value={moods[m.id]} label={moodIconLabel(moods[m.id])} sizeClass="size-5" /> : "?"}
+                {isMoodIconValue(moods[m.id]) ? (
+                  <MoodIcon
+                    value={moods[m.id]}
+                    label={moodIconLabel(moods[m.id])}
+                    sizeClass="size-5"
+                  />
+                ) : (
+                  "?"
+                )}
               </span>
             </div>
-            <div className="text-[10px] font-extrabold uppercase truncate w-full text-center">{m.nickname}</div>
+            <div className="text-[10px] font-extrabold uppercase truncate w-full text-center">
+              {m.nickname}
+            </div>
           </div>
         ))}
       </div>
@@ -950,22 +1141,43 @@ function isMoodIconValue(value: string | null): value is string {
   return typeof value === "string" && value.startsWith("/mood-icons/");
 }
 
-function MoodIcon({ value, label, sizeClass }: { value: string | null; label: string; sizeClass: string }) {
+function MoodIcon({
+  value,
+  label,
+  sizeClass,
+}: {
+  value: string | null;
+  label: string;
+  sizeClass: string;
+}) {
   if (!isMoodIconValue(value)) return null;
-  return <img src={value} alt={label} className={cn(sizeClass, "object-contain")} draggable={false} />;
+  return (
+    <img src={value} alt={label} className={cn(sizeClass, "object-contain")} draggable={false} />
+  );
 }
 
 // ============================================================
 // Avatar
 // ============================================================
 
-function Avatar({ nickname, color, size = 36 }: { nickname: string | null; color?: string; size?: number }) {
+function Avatar({
+  nickname,
+  color,
+  size = 36,
+}: {
+  nickname: string | null;
+  color?: string;
+  size?: number;
+}) {
   const initial = nickname?.[0]?.toUpperCase() ?? "?";
   return (
     <div
       className="rounded-2xl grid place-items-center font-display font-black text-primary-foreground shrink-0 shadow-pop-sm border-2 border-card"
       style={{
-        width: size, height: size, backgroundColor: color ?? "#1CB0F6", fontSize: size * 0.42,
+        width: size,
+        height: size,
+        backgroundColor: color ?? "#1CB0F6",
+        fontSize: size * 0.42,
         ["--shadow-color" as any]: "oklch(0 0 0 / 0.1)",
       }}
     >
@@ -1022,7 +1234,8 @@ function ShoutoutComposer({
 
   const insertMention = (m: Member) => {
     setText((t) => `${t}${t && !t.endsWith(" ") ? " " : ""}@${m.nickname} `);
-    if (!tags.find((t) => t.userId === m.id)) setTags((t) => [...t, { userId: m.id, nickname: m.nickname }]);
+    if (!tags.find((t) => t.userId === m.id))
+      setTags((t) => [...t, { userId: m.id, nickname: m.nickname }]);
   };
 
   const submit = async () => {
@@ -1047,8 +1260,10 @@ function ShoutoutComposer({
   };
 
   return (
-    <div className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 space-y-3"
-      style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}>
+    <div
+      className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 space-y-3"
+      style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}
+    >
       <div className="flex gap-3">
         <Avatar nickname={currentUser.nickname} color={currentUser.color} size={40} />
         <Textarea
@@ -1065,7 +1280,11 @@ function ShoutoutComposer({
         <div className="flex items-center gap-2 flex-wrap pl-13">
           {imagePreview && (
             <div className="relative">
-              <img src={imagePreview} alt="" className="h-20 rounded-xl object-cover border-2 border-foreground/10" />
+              <img
+                src={imagePreview}
+                alt=""
+                className="h-20 rounded-xl object-cover border-2 border-foreground/10"
+              />
               <button
                 onClick={clearImage}
                 aria-label="Remove image"
@@ -1084,7 +1303,10 @@ function ShoutoutComposer({
             </button>
           )}
           {tags.map((t) => (
-            <span key={t.userId} className="rounded-full bg-info/15 text-info font-bold text-xs px-2 py-1">
+            <span
+              key={t.userId}
+              className="rounded-full bg-info/15 text-info font-bold text-xs px-2 py-1"
+            >
               @{t.nickname}
             </span>
           ))}
@@ -1141,7 +1363,13 @@ function ShoutoutComposer({
               </div>
             </PopoverContent>
           </Popover>
-          <Button type="button" variant="ghost" size="icon" aria-label="Attach image" onClick={() => fileRef.current?.click()}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Attach image"
+            onClick={() => fileRef.current?.click()}
+          >
             <ImageIcon className="size-4" />
           </Button>
           <input
@@ -1152,14 +1380,22 @@ function ShoutoutComposer({
             className="hidden"
             onChange={(e) => handleFile(e.target.files?.[0])}
           />
-          <span className="text-[11px] font-bold text-muted-foreground ml-1 tabular-nums">{text.length}/200</span>
+          <span className="text-[11px] font-bold text-muted-foreground ml-1 tabular-nums">
+            {text.length}/200
+          </span>
         </div>
         <Button
           onClick={submit}
           disabled={!canPost}
           className="rounded-2xl shadow-pop-sm h-10 px-5 font-display font-extrabold uppercase"
         >
-          {posting ? "Posting…" : (<><Send className="size-4" /> Post</>)}
+          {posting ? (
+            "Posting…"
+          ) : (
+            <>
+              <Send className="size-4" /> Post
+            </>
+          )}
         </Button>
       </div>
     </div>
@@ -1209,7 +1445,10 @@ function WallPostCard({
 }) {
   const [confirming, setConfirming] = useState(false);
   const canDelete = currentUserId === post.authorId || isParent;
-  const canBoost = isParent && (post.postType === "activity" || post.postType === "boost") && post.authorId !== currentUserId;
+  const canBoost =
+    isParent &&
+    (post.postType === "activity" || post.postType === "boost") &&
+    post.authorId !== currentUserId;
   const badge = BADGE_META[post.postType];
   const isRecap = post.postType === "weekly_recap";
 
@@ -1232,9 +1471,16 @@ function WallPostCard({
         <Avatar nickname={post.authorNickname} color={post.authorColor} size={40} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-display font-extrabold truncate">{post.authorNickname ?? "DinoQuest"}</span>
+            <span className="font-display font-extrabold truncate">
+              {post.authorNickname ?? "DinoQuest"}
+            </span>
             {badge && (
-              <span className={cn("text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md border", badge.cls)}>
+              <span
+                className={cn(
+                  "text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md border",
+                  badge.cls,
+                )}
+              >
                 {badge.label}
               </span>
             )}
@@ -1244,7 +1490,9 @@ function WallPostCard({
               </span>
             )}
           </div>
-          <div className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</div>
+          <div className="text-xs text-muted-foreground">
+            {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+          </div>
         </div>
         {canDelete && (
           <button
@@ -1274,7 +1522,10 @@ function WallPostCard({
       {post.tags.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap">
           {post.tags.map((t) => (
-            <span key={t.userId} className="text-xs rounded-full bg-secondary/60 px-2 py-0.5 font-bold">
+            <span
+              key={t.userId}
+              className="text-xs rounded-full bg-secondary/60 px-2 py-0.5 font-bold"
+            >
               @{t.nickname}
             </span>
           ))}
@@ -1317,7 +1568,10 @@ function WallPostCard({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => { setConfirming(false); onDelete(); }}
+              onClick={() => {
+                setConfirming(false);
+                onDelete();
+              }}
               className="bg-destructive text-destructive-foreground"
             >
               Delete
@@ -1334,7 +1588,12 @@ function WallPostCard({
 // ============================================================
 
 const EMOJI_NAMES: Record<string, string> = {
-  "🔥": "fire", "⭐": "star", "💪": "strong", "🎉": "party", "👏": "clap", "😮": "wow",
+  "🔥": "fire",
+  "⭐": "star",
+  "💪": "strong",
+  "🎉": "party",
+  "👏": "clap",
+  "😮": "wow",
 };
 
 function ReactionBar({
@@ -1360,51 +1619,57 @@ function ReactionBar({
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      {reactions.filter((r) => r.count > 0).map((r) => {
-        const isOpen = whoOpen === r.emoji;
-        return (
-          <div
-            key={r.emoji}
-            className={cn(
-              "inline-flex items-center rounded-full text-sm font-bold transition border-2 overflow-hidden",
-              r.reactedByMe
-                ? "bg-primary/15 border-primary text-primary-dark"
-                : "bg-secondary/60 border-transparent hover:border-foreground/10",
-            )}
-          >
-            <button
-              aria-label={`React with ${EMOJI_NAMES[r.emoji] ?? r.emoji}`}
-              aria-pressed={r.reactedByMe}
-              onClick={() => onReact(r.emoji)}
-              className="inline-flex items-center gap-1 px-2 h-8"
+      {reactions
+        .filter((r) => r.count > 0)
+        .map((r) => {
+          const isOpen = whoOpen === r.emoji;
+          return (
+            <div
+              key={r.emoji}
+              className={cn(
+                "inline-flex items-center rounded-full text-sm font-bold transition border-2 overflow-hidden",
+                r.reactedByMe
+                  ? "bg-primary/15 border-primary text-primary-dark"
+                  : "bg-secondary/60 border-transparent hover:border-foreground/10",
+              )}
             >
-              <span className="text-base leading-none">{r.emoji}</span>
-            </button>
-            <Popover open={isOpen} onOpenChange={(open) => setWhoOpen(open ? r.emoji : null)}>
-              <PopoverTrigger asChild>
-                <button
-                  aria-label={`View who reacted with ${EMOJI_NAMES[r.emoji] ?? r.emoji}`}
-                  className="h-8 px-2 border-l border-foreground/10 hover:bg-secondary/70 tabular-nums"
-                >
-                  {r.count}
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-56 p-3">
-                <div className="text-xs font-extrabold uppercase text-muted-foreground mb-2">Reacted</div>
-                {(whoData?.nicknames?.length ?? 0) === 0 ? (
-                  <div className="text-sm text-muted-foreground">No reactions yet.</div>
-                ) : (
-                  <ul className="space-y-1">
-                    {(whoData?.nicknames ?? []).map((name) => (
-                      <li key={name} className="text-sm font-medium">{name}</li>
-                    ))}
-                  </ul>
-                )}
-              </PopoverContent>
-            </Popover>
-          </div>
-        );
-      })}
+              <button
+                aria-label={`React with ${EMOJI_NAMES[r.emoji] ?? r.emoji}`}
+                aria-pressed={r.reactedByMe}
+                onClick={() => onReact(r.emoji)}
+                className="inline-flex items-center gap-1 px-2 h-8"
+              >
+                <span className="text-base leading-none">{r.emoji}</span>
+              </button>
+              <Popover open={isOpen} onOpenChange={(open) => setWhoOpen(open ? r.emoji : null)}>
+                <PopoverTrigger asChild>
+                  <button
+                    aria-label={`View who reacted with ${EMOJI_NAMES[r.emoji] ?? r.emoji}`}
+                    className="h-8 px-2 border-l border-foreground/10 hover:bg-secondary/70 tabular-nums"
+                  >
+                    {r.count}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-3">
+                  <div className="text-xs font-extrabold uppercase text-muted-foreground mb-2">
+                    Reacted
+                  </div>
+                  {(whoData?.nicknames?.length ?? 0) === 0 ? (
+                    <div className="text-sm text-muted-foreground">No reactions yet.</div>
+                  ) : (
+                    <ul className="space-y-1">
+                      {(whoData?.nicknames ?? []).map((name) => (
+                        <li key={name} className="text-sm font-medium">
+                          {name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+          );
+        })}
       <Popover>
         <PopoverTrigger asChild>
           <button
@@ -1438,7 +1703,11 @@ function ReactionBar({
 // ============================================================
 
 function CommentThread({
-  comments, currentUserId, isParent, onAdd, onDelete,
+  comments,
+  currentUserId,
+  isParent,
+  onAdd,
+  onDelete,
 }: {
   comments: Comment[];
   currentUserId: number;
@@ -1483,12 +1752,21 @@ function CommentThread({
           value={text}
           onChange={(e) => setText(e.target.value.slice(0, 280))}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
           }}
           placeholder="Write a comment…"
           className="rounded-full border-2"
         />
-        <Button size="icon" disabled={!text.trim()} onClick={send} aria-label="Send" className="rounded-full">
+        <Button
+          size="icon"
+          disabled={!text.trim()}
+          onClick={send}
+          aria-label="Send"
+          className="rounded-full"
+        >
           <Send className="size-4" />
         </Button>
       </div>
@@ -1514,14 +1792,17 @@ function BoostButton({
   const send = () => {
     onBoost(xp, msg.trim());
     setOpen(false);
-    setXp(25); setMsg("");
+    setXp(25);
+    setMsg("");
   };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="inline-flex items-center gap-1 text-xs font-extrabold uppercase px-3 h-8 rounded-full bg-warning text-warning-foreground shadow-pop-sm hover:scale-[1.03] transition"
-          style={{ ["--shadow-color" as any]: "oklch(0.55 0.16 60)" }}>
+        <button
+          className="inline-flex items-center gap-1 text-xs font-extrabold uppercase px-3 h-8 rounded-full bg-warning text-warning-foreground shadow-pop-sm hover:scale-[1.03] transition"
+          style={{ ["--shadow-color" as any]: "oklch(0.55 0.16 60)" }}
+        >
           <Zap className="size-3.5" /> Boost
         </button>
       </PopoverTrigger>
@@ -1534,7 +1815,9 @@ function BoostButton({
               onClick={() => setXp(v)}
               className={cn(
                 "py-2 rounded-xl text-sm font-extrabold border-2 transition",
-                xp === v ? "bg-warning text-warning-foreground border-warning shadow-pop-sm" : "bg-secondary/50 border-transparent hover:border-foreground/10",
+                xp === v
+                  ? "bg-warning text-warning-foreground border-warning shadow-pop-sm"
+                  : "bg-secondary/50 border-transparent hover:border-foreground/10",
               )}
               style={{ ["--shadow-color" as any]: "oklch(0.55 0.16 60)" }}
             >
@@ -1542,10 +1825,20 @@ function BoostButton({
             </button>
           ))}
         </div>
-        <Input maxLength={100} value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Add a personal message…" />
+        <Input
+          maxLength={100}
+          value={msg}
+          onChange={(e) => setMsg(e.target.value)}
+          placeholder="Add a personal message…"
+        />
         <div className="flex gap-2">
-          <Button variant="ghost" className="flex-1" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button className="flex-1 rounded-xl font-display font-extrabold uppercase" onClick={send}>
+          <Button variant="ghost" className="flex-1" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            className="flex-1 rounded-xl font-display font-extrabold uppercase"
+            onClick={send}
+          >
             <Zap className="size-4" /> Send
           </Button>
         </div>
@@ -1558,8 +1851,234 @@ function BoostButton({
 // Pinboard
 // ============================================================
 
+function ParentRewardCard({
+  childMembers,
+  open,
+  onOpenChange,
+  selectedChildId,
+  onSelectChild,
+  isPending,
+  onSubmit,
+}: {
+  childMembers: Member[];
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  selectedChildId: number | null;
+  onSelectChild: (id: number | null) => void;
+  isPending: boolean;
+  onSubmit: (values: {
+    childUserId: number;
+    xp: number;
+    coins: number;
+    reason?: string;
+  }) => Promise<void>;
+}) {
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { errors },
+  } = useForm<GiveXpValues>({
+    resolver: zodResolver(giveXpSchema),
+    defaultValues: {
+      childUserId: selectedChildId ?? 0,
+      xp: 10_000,
+      coins: 0,
+      reason: "",
+    },
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    reset({
+      childUserId: selectedChildId ?? 0,
+      xp: 10_000,
+      coins: 0,
+      reason: "",
+    });
+  }, [open, reset, selectedChildId]);
+
+  const xp = watch("xp") ?? 0;
+  const coins = watch("coins") ?? 0;
+  const selectedChild =
+    childMembers.find((child) => child.id === Number(watch("childUserId") || selectedChildId)) ??
+    null;
+
+  const submit = handleSubmit(async (values) => {
+    const reason = values.reason?.trim();
+    await onSubmit({
+      childUserId: values.childUserId,
+      xp: values.xp,
+      coins: values.coins,
+      reason: reason ? reason : undefined,
+    });
+  });
+
+  return (
+    <div
+      className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-4 space-y-3"
+      style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}
+    >
+      <Button
+        type="button"
+        className="w-full rounded-2xl h-11 font-display font-extrabold uppercase bg-purple hover:bg-purple/90 text-white"
+        onClick={() => onOpenChange(true)}
+        disabled={childMembers.length === 0}
+      >
+        <Gift className="size-4" /> Give XP
+      </Button>
+      {childMembers.length === 0 && (
+        <p className="text-xs text-muted-foreground text-center">No child member available.</p>
+      )}
+
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent className="mx-auto w-full max-w-xl">
+          <DrawerHeader>
+            <div className="flex items-center gap-3">
+              <div
+                className="size-11 rounded-2xl text-white grid place-items-center font-display font-black text-lg"
+                style={{ backgroundColor: selectedChild?.color ?? "#1CB0F6" }}
+              >
+                {(selectedChild?.nickname ?? "?").slice(0, 1).toUpperCase()}
+              </div>
+              <div>
+                <DrawerTitle className="font-display font-black text-xl">Give XP</DrawerTitle>
+                <DrawerDescription>{selectedChild?.nickname ?? "Choose a child"}</DrawerDescription>
+              </div>
+            </div>
+          </DrawerHeader>
+          <form onSubmit={submit} className="px-4 pb-4 space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+                Child
+              </Label>
+              <select
+                value={selectedChildId ?? ""}
+                onChange={(e) => {
+                  const nextId = Number(e.target.value);
+                  onSelectChild(Number.isFinite(nextId) ? nextId : null);
+                  setValue("childUserId", nextId, { shouldValidate: true, shouldDirty: true });
+                }}
+                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-bold"
+              >
+                {childMembers.map((child) => (
+                  <option key={child.id} value={child.id}>
+                    {child.nickname}
+                  </option>
+                ))}
+              </select>
+              {errors.childUserId?.message && (
+                <p className="text-xs font-bold text-destructive">{errors.childUserId.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+                XP amount
+              </Label>
+              <Input type="number" min={1} max={MAX_PARENT_REWARD_VALUE} {...register("xp")} />
+              <div className="flex flex-wrap gap-2">
+                {REWARD_QUICK_ADD.map((value) => (
+                  <button
+                    key={`xp-${value}`}
+                    type="button"
+                    onClick={() =>
+                      setValue(
+                        "xp",
+                        Math.min(MAX_PARENT_REWARD_VALUE, Math.max(1, Number(xp || 0) + value)),
+                        { shouldValidate: true, shouldDirty: true },
+                      )
+                    }
+                    className="rounded-full border-2 border-border bg-secondary/60 px-3 py-1 text-xs font-extrabold"
+                  >
+                    +{value.toLocaleString()}
+                  </button>
+                ))}
+              </div>
+              {errors.xp?.message && (
+                <p className="text-xs font-bold text-destructive">{errors.xp.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+                Coins (optional)
+              </Label>
+              <Input type="number" min={0} max={MAX_PARENT_REWARD_VALUE} {...register("coins")} />
+              <div className="flex flex-wrap gap-2">
+                {REWARD_QUICK_ADD.map((value) => (
+                  <button
+                    key={`coin-${value}`}
+                    type="button"
+                    onClick={() =>
+                      setValue(
+                        "coins",
+                        Math.min(MAX_PARENT_REWARD_VALUE, Math.max(0, Number(coins || 0) + value)),
+                        { shouldValidate: true, shouldDirty: true },
+                      )
+                    }
+                    className="rounded-full border-2 border-border bg-secondary/60 px-3 py-1 text-xs font-extrabold"
+                  >
+                    +{value.toLocaleString()}
+                  </button>
+                ))}
+              </div>
+              {errors.coins?.message && (
+                <p className="text-xs font-bold text-destructive">{errors.coins.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+                Reason / note
+              </Label>
+              <Textarea
+                rows={2}
+                maxLength={100}
+                placeholder="e.g. Helped carry groceries 🛒"
+                {...register("reason")}
+              />
+              {errors.reason?.message && (
+                <p className="text-xs font-bold text-destructive">{errors.reason.message}</p>
+              )}
+            </div>
+
+            <DrawerFooter className="px-0 pb-0">
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => onOpenChange(false)}
+                  className="flex-1"
+                  disabled={isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 bg-purple hover:bg-purple/90 text-white"
+                  disabled={isPending}
+                >
+                  {isPending ? "Awarding..." : "Award XP"}
+                </Button>
+              </div>
+            </DrawerFooter>
+          </form>
+        </DrawerContent>
+      </Drawer>
+    </div>
+  );
+}
+
 function Pinboard({
-  pins, isParent, currentUserId, onAck, onRemove, onCreate,
+  pins,
+  isParent,
+  currentUserId,
+  onAck,
+  onRemove,
+  onCreate,
 }: {
   pins: Pin[];
   isParent: boolean;
@@ -1572,8 +2091,10 @@ function Pinboard({
   const atMax = pins.length >= 5;
 
   return (
-    <div className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-5 space-y-3"
-      style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}>
+    <div
+      className="rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-5 space-y-3"
+      style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}
+    >
       <div className="flex items-center justify-between">
         <h3 className="font-display font-extrabold uppercase tracking-wide text-sm flex items-center gap-2">
           <Pin className="size-4 text-pink" /> Pinboard
@@ -1599,7 +2120,10 @@ function Pinboard({
           {pins.map((p) => {
             const acked = p.acknowledgements.some((a) => a.userId === currentUserId);
             return (
-              <li key={p.id} className="rounded-2xl bg-warning/10 border-2 border-warning/25 p-3 space-y-2 relative">
+              <li
+                key={p.id}
+                className="rounded-2xl bg-warning/10 border-2 border-warning/25 p-3 space-y-2 relative"
+              >
                 <div className="text-sm font-bold leading-snug">📌 {p.message}</div>
                 <div className="text-[11px] text-muted-foreground font-bold flex items-center justify-between gap-2 flex-wrap">
                   <span>Pinned by {p.createdBy}</span>
@@ -1642,13 +2166,22 @@ function Pinboard({
         </ul>
       )}
 
-      <CreatePinModal open={creating} onOpenChange={setCreating} onCreate={(m, e) => { onCreate(m, e); setCreating(false); }} />
+      <CreatePinModal
+        open={creating}
+        onOpenChange={setCreating}
+        onCreate={(m, e) => {
+          onCreate(m, e);
+          setCreating(false);
+        }}
+      />
     </div>
   );
 }
 
 function CreatePinModal({
-  open, onOpenChange, onCreate,
+  open,
+  onOpenChange,
+  onCreate,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -1665,8 +2198,15 @@ function CreatePinModal({
         <div className="space-y-3">
           <div>
             <Label>Message</Label>
-            <Textarea rows={3} value={msg} onChange={(e) => setMsg(e.target.value.slice(0, 300))} maxLength={300} />
-            <div className="text-[10px] text-muted-foreground tabular-nums text-right">{msg.length}/300</div>
+            <Textarea
+              rows={3}
+              value={msg}
+              onChange={(e) => setMsg(e.target.value.slice(0, 300))}
+              maxLength={300}
+            />
+            <div className="text-[10px] text-muted-foreground tabular-nums text-right">
+              {msg.length}/300
+            </div>
           </div>
           <div>
             <Label>Expires on (optional)</Label>
@@ -1674,10 +2214,16 @@ function CreatePinModal({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
           <Button
             disabled={!msg.trim()}
-            onClick={() => { onCreate(msg.trim(), exp ? new Date(exp).toISOString() : null); setMsg(""); setExp(""); }}
+            onClick={() => {
+              onCreate(msg.trim(), exp ? new Date(exp).toISOString() : null);
+              setMsg("");
+              setExp("");
+            }}
             className="rounded-xl font-display font-extrabold uppercase"
           >
             Pin it
@@ -1692,11 +2238,19 @@ function CreatePinModal({
 // Lightbox
 // ============================================================
 
-function PhotoLightbox({ image, onClose }: { image: { src: string; caption: string }; onClose: () => void }) {
+function PhotoLightbox({
+  image,
+  onClose,
+}: {
+  image: { src: string; caption: string };
+  onClose: () => void;
+}) {
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -1723,7 +2277,10 @@ function PhotoLightbox({ image, onClose }: { image: { src: string; caption: stri
         onClick={(e) => e.stopPropagation()}
       />
       {image.caption && (
-        <div className="mt-4 text-white/90 text-sm max-w-2xl text-center font-medium" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="mt-4 text-white/90 text-sm max-w-2xl text-center font-medium"
+          onClick={(e) => e.stopPropagation()}
+        >
           {image.caption}
         </div>
       )}
