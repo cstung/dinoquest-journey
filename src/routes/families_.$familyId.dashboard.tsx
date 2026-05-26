@@ -32,18 +32,11 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -164,7 +157,6 @@ const REWARD_QUICK_ADD = [10_000, 25_000, 50_000, 100_000];
 const giveXpSchema = z.object({
   childUserId: z.coerce.number().int().positive(),
   xp: z.coerce.number().int().min(1, "XP must be at least 1").max(MAX_PARENT_REWARD_VALUE),
-  coins: z.coerce.number().int().min(0, "Coins cannot be negative").max(MAX_PARENT_REWARD_VALUE),
   reason: z
     .string()
     .max(100, "Reason must be 100 characters or fewer")
@@ -193,7 +185,7 @@ function FamilyDashboardPage() {
   const [pendingPosts, setPendingPosts] = useState<WallPost[]>([]);
   const [wsConnected, setWsConnected] = useState(true);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; caption: string } | null>(null);
-  const [rewardDrawerOpen, setRewardDrawerOpen] = useState(false);
+  const [rewardDialogOpen, setRewardDialogOpen] = useState(false);
   const [selectedRewardChildId, setSelectedRewardChildId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -847,19 +839,15 @@ function FamilyDashboardPage() {
           {isParent && (
             <ParentRewardCard
               childMembers={childMembers}
-              open={rewardDrawerOpen}
-              onOpenChange={setRewardDrawerOpen}
+              open={rewardDialogOpen}
+              onOpenChange={setRewardDialogOpen}
               selectedChildId={selectedRewardChildId}
               onSelectChild={setSelectedRewardChildId}
               isPending={awardParentReward.isPending}
               onSubmit={async (values) => {
                 const result = await awardParentReward.mutateAsync(values);
-                toast.success(
-                  result.coinsAwarded > 0
-                    ? `Awarded ${result.xpAwarded.toLocaleString()} XP and ${result.coinsAwarded.toLocaleString()} coins.`
-                    : `Awarded ${result.xpAwarded.toLocaleString()} XP.`,
-                );
-                setRewardDrawerOpen(false);
+                toast.success(`Awarded ${result.xpAwarded.toLocaleString()} XP.`);
+                setRewardDialogOpen(false);
               }}
             />
           )}
@@ -1869,7 +1857,6 @@ function ParentRewardCard({
   onSubmit: (values: {
     childUserId: number;
     xp: number;
-    coins: number;
     reason?: string;
   }) => Promise<void>;
 }) {
@@ -1885,7 +1872,6 @@ function ParentRewardCard({
     defaultValues: {
       childUserId: selectedChildId ?? 0,
       xp: 10_000,
-      coins: 0,
       reason: "",
     },
   });
@@ -1895,13 +1881,11 @@ function ParentRewardCard({
     reset({
       childUserId: selectedChildId ?? 0,
       xp: 10_000,
-      coins: 0,
       reason: "",
     });
   }, [open, reset, selectedChildId]);
 
   const xp = watch("xp") ?? 0;
-  const coins = watch("coins") ?? 0;
   const selectedChild =
     childMembers.find((child) => child.id === Number(watch("childUserId") || selectedChildId)) ??
     null;
@@ -1911,7 +1895,6 @@ function ParentRewardCard({
     await onSubmit({
       childUserId: values.childUserId,
       xp: values.xp,
-      coins: values.coins,
       reason: reason ? reason : undefined,
     });
   });
@@ -1933,9 +1916,9 @@ function ParentRewardCard({
         <p className="text-xs text-muted-foreground text-center">No child member available.</p>
       )}
 
-      <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent className="mx-auto w-full max-w-xl">
-          <DrawerHeader>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-xl rounded-3xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6">
             <div className="flex items-center gap-3">
               <div
                 className="size-11 rounded-2xl text-white grid place-items-center font-display font-black text-lg"
@@ -1944,12 +1927,12 @@ function ParentRewardCard({
                 {(selectedChild?.nickname ?? "?").slice(0, 1).toUpperCase()}
               </div>
               <div>
-                <DrawerTitle className="font-display font-black text-xl">Give XP</DrawerTitle>
-                <DrawerDescription>{selectedChild?.nickname ?? "Choose a child"}</DrawerDescription>
+                <DialogTitle className="font-display font-black text-xl">Give XP</DialogTitle>
+                <DialogDescription>{selectedChild?.nickname ?? "Choose a child"}</DialogDescription>
               </div>
             </div>
-          </DrawerHeader>
-          <form onSubmit={submit} className="px-4 pb-4 space-y-4">
+          </DialogHeader>
+          <form onSubmit={submit} className="px-6 pb-6 space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
                 Child
@@ -2004,34 +1987,6 @@ function ParentRewardCard({
 
             <div className="space-y-1.5">
               <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
-                Coins (optional)
-              </Label>
-              <Input type="number" min={0} max={MAX_PARENT_REWARD_VALUE} {...register("coins")} />
-              <div className="flex flex-wrap gap-2">
-                {REWARD_QUICK_ADD.map((value) => (
-                  <button
-                    key={`coin-${value}`}
-                    type="button"
-                    onClick={() =>
-                      setValue(
-                        "coins",
-                        Math.min(MAX_PARENT_REWARD_VALUE, Math.max(0, Number(coins || 0) + value)),
-                        { shouldValidate: true, shouldDirty: true },
-                      )
-                    }
-                    className="rounded-full border-2 border-border bg-secondary/60 px-3 py-1 text-xs font-extrabold"
-                  >
-                    +{value.toLocaleString()}
-                  </button>
-                ))}
-              </div>
-              {errors.coins?.message && (
-                <p className="text-xs font-bold text-destructive">{errors.coins.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
                 Reason / note
               </Label>
               <Textarea
@@ -2045,7 +2000,7 @@ function ParentRewardCard({
               )}
             </div>
 
-            <DrawerFooter className="px-0 pb-0">
+            <DialogFooter className="px-0 pb-0">
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -2064,10 +2019,10 @@ function ParentRewardCard({
                   {isPending ? "Awarding..." : "Award XP"}
                 </Button>
               </div>
-            </DrawerFooter>
+            </DialogFooter>
           </form>
-        </DrawerContent>
-      </Drawer>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

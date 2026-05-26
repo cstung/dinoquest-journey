@@ -55,7 +55,6 @@ async def award_xp(
             family_id=family_id,
             user_id=user_id,
             xp_balance=0,
-            coin_balance=0,
             level=1,
         )
         db.add(level_row)

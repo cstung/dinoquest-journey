@@ -26,9 +26,7 @@ export interface ParentRewardResult {
   childUserId: number;
   childUsername: string;
   xpAwarded: number;
-  coinsAwarded: number;
   xpBalance: number;
-  coinBalance: number;
   level: number;
   label: string;
 }
@@ -273,7 +271,7 @@ export function useRemoveMember(familyId: number | null) {
 export function useAwardParentReward(familyId: number | null, childUserId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { xp: number; coins?: number; reason?: string }) =>
+    mutationFn: (body: { xp: number; reason?: string }) =>
       apiRequest<ParentRewardResult>(
         `/api/families/${familyId}/members/${childUserId}/parent-reward`,
         {

@@ -107,7 +107,6 @@ interface ProfileData {
 interface Stats {
   level: number;
   xp_balance: number;
-  coin_balance: number;
   level_up_cost: number;
   total_quests_completed: number;
   total_quests_pending: number;
@@ -154,7 +153,6 @@ interface LeaderboardEntry {
   userId: number;
   level: number;
   xp: number;
-  coins?: number;
 }
 
 interface LeaderboardPage {
@@ -186,7 +184,6 @@ interface TestPage {
 const EMPTY_STATS: Stats = {
   level: 0,
   xp_balance: 0,
-  coin_balance: 0,
   level_up_cost: 50,
   total_quests_completed: 0,
   total_quests_pending: 0,
@@ -303,7 +300,6 @@ function eventText(ev: ActivityEv): {
       };
     case "parent_reward": {
       const xp = Number(ev.payload.xp ?? 0);
-      const coins = Number(ev.payload.coins ?? 0);
       const reason =
         typeof ev.payload.reason === "string"
           ? ev.payload.reason
@@ -313,8 +309,7 @@ function eventText(ev: ActivityEv): {
       return {
         icon: "🎁",
         color: "bg-purple/15 text-purple",
-        text:
-          coins > 0 ? `Direct reward (+${xp} XP, +${coins} coins)` : `Direct reward (+${xp} XP)`,
+        text: `Direct reward (+${xp} XP)`,
         subtitle: reason,
       };
     }
@@ -467,7 +462,6 @@ function KidProfilePage() {
       ...EMPTY_STATS,
       level: leaderboard?.level ?? 1,
       xp_balance: leaderboard?.xp ?? 0,
-      coin_balance: leaderboard?.coins ?? 0,
       level_up_cost: Math.max((leaderboard?.level ?? 1) * 50, 50),
       total_quests_completed: totalQuestsCompleted,
       total_quests_pending: totalQuestsPending,
@@ -656,9 +650,6 @@ function KidProfilePage() {
                     <div className="font-display font-extrabold tabular-nums">
                       {stats.xp_balance.toLocaleString()} / {stats.level_up_cost.toLocaleString()}{" "}
                       XP
-                    </div>
-                    <div className="text-xs font-bold text-muted-foreground">
-                      Coins: {stats.coin_balance.toLocaleString()}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {Math.max(stats.level_up_cost - stats.xp_balance, 0).toLocaleString()} XP

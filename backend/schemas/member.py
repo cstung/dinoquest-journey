@@ -37,7 +37,6 @@ class LevelUpOut(APIModel):
 
 class ParentRewardIn(APIModel):
     xp: int = Field(ge=1, le=10_000_000)
-    coins: int = Field(default=0, ge=0, le=10_000_000)
     reason: str | None = Field(default=None, max_length=100)
 
     @field_validator("reason")
@@ -53,8 +52,6 @@ class ParentRewardOut(APIModel):
     child_user_id: int
     child_username: str
     xp_awarded: int
-    coins_awarded: int
     xp_balance: int
-    coin_balance: int
     level: int
     label: str

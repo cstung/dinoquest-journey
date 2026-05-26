@@ -31,7 +31,6 @@ class UserFamilyLevel(Base):
     family_id: Mapped[int] = mapped_column(ForeignKey("families.id"), nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     xp_balance: Mapped[int] = mapped_column(nullable=False, default=0)
-    coin_balance: Mapped[int] = mapped_column(nullable=False, default=0)
     level: Mapped[int] = mapped_column(nullable=False, default=1)
     current_streak: Mapped[int] = mapped_column(nullable=False, default=0)
     best_streak: Mapped[int] = mapped_column(nullable=False, default=0)

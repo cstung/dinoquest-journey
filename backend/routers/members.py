@@ -173,14 +173,11 @@ async def award_parent_reward(
         db=db,
         note=label,
     )
-    if body.coins > 0:
-        level_row.coin_balance = max((level_row.coin_balance or 0) + body.coins, 0)
 
     payload = {
         "type": "parent_reward",
         "label": label,
         "xp": body.xp,
-        "coins": body.coins,
         "timestamp": now.isoformat().replace("+00:00", "Z"),
         "childId": user_id,
         "parentId": parent_member.user_id,
@@ -215,7 +212,6 @@ async def award_parent_reward(
         {
             "userId": user_id,
             "delta": body.xp,
-            "coins": body.coins,
             "reason": XpReason.PARENT_REWARD.value,
             "label": label,
             "parentId": parent_member.user_id,
@@ -231,9 +227,7 @@ async def award_parent_reward(
         child_user_id=user_id,
         child_username=child_user.username,
         xp_awarded=body.xp,
-        coins_awarded=body.coins,
         xp_balance=level_row.xp_balance,
-        coin_balance=level_row.coin_balance,
         level=level_row.level,
         label=label,
     )
@@ -257,7 +251,6 @@ async def level_up_me(
             family_id=membership.family_id,
             user_id=membership.user_id,
             xp_balance=0,
-            coin_balance=0,
             level=1,
         )
         db.add(level_row)

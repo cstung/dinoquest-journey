@@ -33,11 +33,8 @@ export const Route = createFileRoute("/")({ component: HomePage });
 function eventLabelWithXp(eventType: string, payload: Record<string, unknown> | null): string {
   if (eventType === "parent_reward" && payload) {
     const xp = Number(payload.xp ?? 0);
-    const coins = Number(payload.coins ?? 0);
     const reason = typeof payload.label === "string" ? payload.label : "Parent reward";
-    return coins > 0
-      ? `${reason} (+${xp.toLocaleString()} XP, +${coins.toLocaleString()} coins)`
-      : `${reason} (+${xp.toLocaleString()} XP)`;
+    return `${reason} (+${xp.toLocaleString()} XP)`;
   }
   const normalized = eventType.replaceAll("_", " ");
   const xpDelta = resolveXpDelta(eventType, payload);
@@ -227,7 +224,6 @@ function HomePage() {
   })();
 
   const rewardXp = Number(latestParentReward?.payload?.xp ?? 0);
-  const rewardCoins = Number(latestParentReward?.payload?.coins ?? 0);
   const rewardReason =
     typeof latestParentReward?.payload?.label === "string"
       ? latestParentReward.payload.label
@@ -270,7 +266,6 @@ function HomePage() {
                 </p>
                 <p className="text-sm font-bold mt-1">
                   +{rewardXp.toLocaleString()} XP
-                  {rewardCoins > 0 ? ` and +${rewardCoins.toLocaleString()} coins` : ""}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">{rewardReason}</p>
               </div>

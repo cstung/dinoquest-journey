@@ -593,17 +593,12 @@ function formatFamilyEvent(eventType: string, payload: Record<string, unknown> |
         : "resolved a join request";
     case "parent_reward": {
       const xp = Number(p.xp ?? 0);
-      const coins = Number(p.coins ?? 0);
       const childName = typeof p.childName === "string" ? p.childName : "child";
       const isAudit = p.audit === true;
       if (isAudit) {
-        return coins > 0
-          ? `You awarded ${xp.toLocaleString()} XP and ${coins.toLocaleString()} coins to ${childName}`
-          : `You awarded ${xp.toLocaleString()} XP to ${childName}`;
+        return `You awarded ${xp.toLocaleString()} XP to ${childName}`;
       }
-      return coins > 0
-        ? `received a direct reward (+${xp.toLocaleString()} XP, +${coins.toLocaleString()} coins)`
-        : `received a direct reward (+${xp.toLocaleString()} XP)`;
+      return `received a direct reward (+${xp.toLocaleString()} XP)`;
     }
     default:
       return eventType.replaceAll("_", " ");
