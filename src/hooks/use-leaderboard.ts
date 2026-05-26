@@ -8,6 +8,7 @@ export interface LeaderboardEntry {
   avatarColor: string | null;
   level: number;
   xp: number;
+  coins: number;
   currentStreak: number;
   isYou: boolean;
 }
@@ -26,7 +27,8 @@ export interface LevelUpResult {
 export function useLeaderboard(familyId: number | null, scope: "family" | "global") {
   return useQuery({
     queryKey: ["leaderboard", familyId, scope],
-    queryFn: () => apiRequest<LeaderboardPage>(`/api/families/${familyId}/leaderboard?scope=${scope}`),
+    queryFn: () =>
+      apiRequest<LeaderboardPage>(`/api/families/${familyId}/leaderboard?scope=${scope}`),
     enabled: !!familyId,
   });
 }

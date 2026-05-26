@@ -14,6 +14,7 @@ class XpReason(str, Enum):
     REWARD_CLAIM = "reward_claim"
     TEST_REOPEN = "test_reopen_revoke"
     LEVEL_UP = "level_up"
+    PARENT_REWARD = "parent_reward"
 
 
 def xp_cost_for_level_up(current_level: int) -> int:
@@ -50,7 +51,13 @@ async def award_xp(
     ).scalar_one_or_none()
 
     if not level_row:
-        level_row = UserFamilyLevel(family_id=family_id, user_id=user_id, xp_balance=0, level=1)
+        level_row = UserFamilyLevel(
+            family_id=family_id,
+            user_id=user_id,
+            xp_balance=0,
+            coin_balance=0,
+            level=1,
+        )
         db.add(level_row)
 
     level_row.xp_balance = max(level_row.xp_balance + delta, 0)

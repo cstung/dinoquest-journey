@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from pydantic import Field
 from pydantic import field_validator
 
 from backend.base_schema import APIModel
@@ -32,3 +33,28 @@ class LevelUpOut(APIModel):
     new_level: int
     xp_spent: int
     xp_balance: int
+
+
+class ParentRewardIn(APIModel):
+    xp: int = Field(ge=1, le=10_000_000)
+    coins: int = Field(default=0, ge=0, le=10_000_000)
+    reason: str | None = Field(default=None, max_length=100)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class ParentRewardOut(APIModel):
+    child_user_id: int
+    child_username: str
+    xp_awarded: int
+    coins_awarded: int
+    xp_balance: int
+    coin_balance: int
+    level: int
+    label: str

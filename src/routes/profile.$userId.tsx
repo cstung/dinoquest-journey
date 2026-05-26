@@ -49,13 +49,29 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { ApiError, apiRequest } from "@/lib/api";
+import { useAwardParentReward } from "@/hooks/use-families";
 
 export const Route = createFileRoute("/profile/$userId")({
   head: () => ({
@@ -101,6 +117,7 @@ interface ProfileData {
 interface Stats {
   level: number;
   xp_balance: number;
+  coin_balance: number;
   level_up_cost: number;
   total_quests_completed: number;
   total_quests_pending: number;
@@ -125,7 +142,8 @@ interface ActivityEv {
     | "achievement_earned"
     | "reward_claim_requested"
     | "streak_milestone"
-    | "xp_earned";
+    | "xp_earned"
+    | "parent_reward";
   created_at: string;
   payload: Record<string, any>;
 }
@@ -146,6 +164,7 @@ interface LeaderboardEntry {
   userId: number;
   level: number;
   xp: number;
+  coins?: number;
 }
 
 interface LeaderboardPage {
@@ -177,6 +196,7 @@ interface TestPage {
 const EMPTY_STATS: Stats = {
   level: 0,
   xp_balance: 0,
+  coin_balance: 0,
   level_up_cost: 50,
   total_quests_completed: 0,
   total_quests_pending: 0,
@@ -222,37 +242,92 @@ function daysUntilBirthday(iso: string | null): number | null {
   if (next.getTime() < new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) {
     next.setFullYear(today.getFullYear() + 1);
   }
-  const ms = next.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const ms =
+    next.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   return Math.round(ms / (1000 * 60 * 60 * 24));
 }
 
-function eventText(ev: ActivityEv): { icon: string; text: string; color: string } {
+function eventText(ev: ActivityEv): {
+  icon: string;
+  text: string;
+  subtitle?: string;
+  color: string;
+} {
   const questTitle = ev.payload.quest_title ?? ev.payload.title ?? "a quest";
   const testTitle = ev.payload.test_title ?? ev.payload.title ?? "a video quiz";
   const score = ev.payload.score ?? ev.payload.score_pct ?? 0;
   switch (ev.event_type) {
     case "quest_completed":
-      return { icon: "??", color: "bg-success/15 text-success-foreground", text: `Completed "${questTitle}" (+${ev.payload.xp ?? 0} XP)` };
+      return {
+        icon: "??",
+        color: "bg-success/15 text-success-foreground",
+        text: `Completed "${questTitle}" (+${ev.payload.xp ?? 0} XP)`,
+      };
     case "quest_cycle_created":
-      return { icon: "??", color: "bg-info/15 text-info-foreground", text: `New cycle started for '${ev.payload.questTitle ?? questTitle}'` };
+      return {
+        icon: "??",
+        color: "bg-info/15 text-info-foreground",
+        text: `New cycle started for '${ev.payload.questTitle ?? questTitle}'`,
+      };
     case "quest_missed":
-      return { icon: "?", color: "bg-destructive/15 text-destructive", text: `Missed '${ev.payload.questTitle ?? questTitle}' - streak broken` };
+      return {
+        icon: "?",
+        color: "bg-destructive/15 text-destructive",
+        text: `Missed '${ev.payload.questTitle ?? questTitle}' - streak broken`,
+      };
     case "test_completed":
-      return { icon: "??", color: "bg-info/15 text-info-foreground", text: `Scored ${score}% on "${testTitle}"` };
+      return {
+        icon: "??",
+        color: "bg-info/15 text-info-foreground",
+        text: `Scored ${score}% on "${testTitle}"`,
+      };
     case "level_up":
-      return { icon: "??", color: "bg-warning/15 text-warning-foreground", text: `Reached Level ${ev.payload.new_level ?? ev.payload.level ?? "new"}!` };
+      return {
+        icon: "??",
+        color: "bg-warning/15 text-warning-foreground",
+        text: `Reached Level ${ev.payload.new_level ?? ev.payload.level ?? "new"}!`,
+      };
     case "achievement_earned":
-      return { icon: "??", color: "bg-purple/15 text-purple", text: `Earned "${ev.payload.achievement_name}" Medal` };
+      return {
+        icon: "??",
+        color: "bg-purple/15 text-purple",
+        text: `Earned "${ev.payload.achievement_name}" Medal`,
+      };
     case "reward_claim_requested":
-      return { icon: "??", color: "bg-pink/15 text-pink", text: `Claimed "${ev.payload.reward_title ?? "a reward"}" reward` };
+      return {
+        icon: "??",
+        color: "bg-pink/15 text-pink",
+        text: `Claimed "${ev.payload.reward_title ?? "a reward"}" reward`,
+      };
     case "streak_milestone":
-      return { icon: "??", color: "bg-warning/15 text-warning-foreground", text: `${ev.payload.n}-day streak achieved!` };
+      return {
+        icon: "??",
+        color: "bg-warning/15 text-warning-foreground",
+        text: `${ev.payload.n}-day streak achieved!`,
+      };
     case "xp_earned":
       return {
         icon: "?",
         color: "bg-primary/15 text-primary-dark",
         text: `${Number(ev.payload.delta ?? ev.payload.xp ?? 0) >= 0 ? "Earned" : "Spent"} ${Math.abs(Number(ev.payload.delta ?? ev.payload.xp ?? 0))} XP`,
       };
+    case "parent_reward": {
+      const xp = Number(ev.payload.xp ?? 0);
+      const coins = Number(ev.payload.coins ?? 0);
+      const reason =
+        typeof ev.payload.reason === "string"
+          ? ev.payload.reason
+          : typeof ev.payload.label === "string"
+            ? ev.payload.label
+            : "Parent reward";
+      return {
+        icon: "🎁",
+        color: "bg-purple/15 text-purple",
+        text:
+          coins > 0 ? `Direct reward (+${xp} XP, +${coins} coins)` : `Direct reward (+${xp} XP)`,
+        subtitle: reason,
+      };
+    }
   }
 }
 
@@ -281,7 +356,11 @@ function KidProfilePage() {
   const canManageFamilyProfiles = isParent || isSuperadmin;
   const allowed = isSelf || canManageFamilyProfiles;
 
-  const { data: profile, isLoading: profileLoading, error: profileError } = useQuery({
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    error: profileError,
+  } = useQuery({
     queryKey: ["profile", userId],
     queryFn: () => apiRequest<ProfileData>(`/api/users/${userId}/profile`),
     enabled: !!userId,
@@ -290,7 +369,10 @@ function KidProfilePage() {
   });
   const { data: leaderboardData, isLoading: leaderboardLoading } = useQuery({
     queryKey: ["profile-leaderboard", activeFamilyId],
-    queryFn: () => apiRequest<LeaderboardPage>(`/api/families/${activeFamilyId}/leaderboard?scope=family&limit=200`),
+    queryFn: () =>
+      apiRequest<LeaderboardPage>(
+        `/api/families/${activeFamilyId}/leaderboard?scope=family&limit=200`,
+      ),
     enabled: !!activeFamilyId && !!userId,
     retry: false,
     refetchOnWindowFocus: false,
@@ -311,10 +393,7 @@ function KidProfilePage() {
   });
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ["activity", activeFamilyId, userId],
-    queryFn: () =>
-      apiRequest<ActivityApiPage>(
-        `/api/families/${activeFamilyId}/activity?limit=50`,
-      ),
+    queryFn: () => apiRequest<ActivityApiPage>(`/api/families/${activeFamilyId}/activity?limit=50`),
     enabled: !!activeFamilyId && !!userId,
     retry: false,
     refetchOnWindowFocus: false,
@@ -336,8 +415,11 @@ function KidProfilePage() {
         "reward_claim_requested",
         "streak_milestone",
         "xp_earned",
+        "parent_reward",
       ]);
-      return known.has(eventType as ActivityEv["event_type"]) ? (eventType as ActivityEv["event_type"]) : "xp_earned";
+      return known.has(eventType as ActivityEv["event_type"])
+        ? (eventType as ActivityEv["event_type"])
+        : "xp_earned";
     };
     return allEventsForUser.slice(0, 8).map((row) => ({
       id: row.id,
@@ -363,10 +445,12 @@ function KidProfilePage() {
   const stats = useMemo<Stats>(() => {
     const targetId = Number(userId);
     const leaderboard = leaderboardData?.items?.find((x) => x.userId === targetId);
-    const questAssignments =
-      (questsData?.items ?? []).flatMap((q) => q.assignedMembers ?? []).filter((m) => m.userId === targetId);
-    const testAssignments =
-      (testsData?.items ?? []).flatMap((t) => t.assignedMembers ?? []).filter((m) => m.userId === targetId);
+    const questAssignments = (questsData?.items ?? [])
+      .flatMap((q) => q.assignedMembers ?? [])
+      .filter((m) => m.userId === targetId);
+    const testAssignments = (testsData?.items ?? [])
+      .flatMap((t) => t.assignedMembers ?? [])
+      .filter((m) => m.userId === targetId);
     const totalQuestsCompleted = questAssignments.filter((m) => m.status === "completed").length;
     const totalQuestsPending = questAssignments.filter((m) => m.status !== "completed").length;
     const totalTestsCompleted = testAssignments.filter((m) => m.status === "completed").length;
@@ -374,7 +458,9 @@ function KidProfilePage() {
       .filter((e) => e.eventType === "test_completed")
       .map((e) => Number(e.payload?.score ?? e.payload?.score_pct ?? 0))
       .filter((n) => Number.isFinite(n) && n > 0);
-    const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+    const avgScore = scores.length
+      ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+      : 0;
     const now = new Date();
     const start = new Date(now);
     start.setHours(0, 0, 0, 0);
@@ -391,6 +477,7 @@ function KidProfilePage() {
       ...EMPTY_STATS,
       level: leaderboard?.level ?? 1,
       xp_balance: leaderboard?.xp ?? 0,
+      coin_balance: leaderboard?.coins ?? 0,
       level_up_cost: Math.max((leaderboard?.level ?? 1) * 50, 50),
       total_quests_completed: totalQuestsCompleted,
       total_quests_pending: totalQuestsPending,
@@ -402,7 +489,8 @@ function KidProfilePage() {
       test_score_history: scores.slice(-10),
     };
   }, [leaderboardData?.items, questsData?.items, testsData?.items, allEventsForUser, userId]);
-  const isLoading = profileLoading || leaderboardLoading || questsLoading || testsLoading || activityLoading;
+  const isLoading =
+    profileLoading || leaderboardLoading || questsLoading || testsLoading || activityLoading;
   const selfFallbackProfile: ProfileData | null =
     isSelf && authUser
       ? {
@@ -427,7 +515,8 @@ function KidProfilePage() {
     profileError instanceof ApiError
       ? profileError.status
       : (profileError as { status?: number } | null)?.status;
-  const shouldShowProfileError = !resolvedProfile || (profileLoadFailed != null && profileLoadFailed !== 404);
+  const shouldShowProfileError =
+    !resolvedProfile || (profileLoadFailed != null && profileLoadFailed !== 404);
 
   const updateProfileMutation = useMutation({
     mutationFn: (vals: Partial<ProfileData>) =>
@@ -486,7 +575,10 @@ function KidProfilePage() {
   const updateProfile = (vals: Partial<ProfileData>) => updateProfileMutation.mutate(vals);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [rewardDrawerOpen, setRewardDrawerOpen] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
+  const awardParentReward = useAwardParentReward(activeFamilyId, numericId);
+  const canAwardDirectReward = canManageFamilyProfiles && !isSelf && !!activeFamilyId;
 
   const daysLeft = resolvedProfile ? daysUntilBirthday(resolvedProfile.birthday) : null;
   useEffect(() => {
@@ -533,7 +625,9 @@ function KidProfilePage() {
 
   const rank = rankFromLevel(stats.level);
   const xpPct = Math.min(100, (stats.xp_balance / stats.level_up_cost) * 100);
-  const age = resolvedProfile.birthday ? differenceInYears(new Date(), new Date(resolvedProfile.birthday)) : null;
+  const age = resolvedProfile.birthday
+    ? differenceInYears(new Date(), new Date(resolvedProfile.birthday))
+    : null;
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -546,7 +640,9 @@ function KidProfilePage() {
           rank={rank}
           familyName={activeFamilyName}
           isSelf={isSelf}
+          canGiveXp={canAwardDirectReward}
           onEdit={() => setDrawerOpen(true)}
+          onGiveXp={() => setRewardDrawerOpen(true)}
           onAvatarUpload={(file) => avatarMutation.mutate(file)}
         />
 
@@ -558,19 +654,30 @@ function KidProfilePage() {
           <div className="lg:col-span-2 space-y-6">
             {/* Section 4 — XP & Level */}
             <Card>
-              <SectionHeader icon={<TrendingUp className="size-5" />} title="Level & XP" caption={`Spendable XP balance in ${activeFamilyName}`} />
+              <SectionHeader
+                icon={<TrendingUp className="size-5" />}
+                title="Level & XP"
+                caption={`Spendable XP balance in ${activeFamilyName}`}
+              />
               <div className="space-y-4">
                 <div className="flex items-end justify-between gap-3 flex-wrap">
                   <div>
-                    <div className="font-display font-black text-4xl text-primary-dark">LVL {stats.level}</div>
+                    <div className="font-display font-black text-4xl text-primary-dark">
+                      LVL {stats.level}
+                    </div>
                     <div className="text-sm font-bold text-muted-foreground">{rank}</div>
                   </div>
                   <div className="text-right">
                     <div className="font-display font-extrabold tabular-nums">
-                      {stats.xp_balance.toLocaleString()} / {stats.level_up_cost.toLocaleString()} XP
+                      {stats.xp_balance.toLocaleString()} / {stats.level_up_cost.toLocaleString()}{" "}
+                      XP
+                    </div>
+                    <div className="text-xs font-bold text-muted-foreground">
+                      Coins: {stats.coin_balance.toLocaleString()}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {Math.max(stats.level_up_cost - stats.xp_balance, 0).toLocaleString()} XP until level up is available
+                      {Math.max(stats.level_up_cost - stats.xp_balance, 0).toLocaleString()} XP
+                      until level up is available
                     </div>
                   </div>
                 </div>
@@ -594,9 +701,24 @@ function KidProfilePage() {
             <Card>
               <SectionHeader icon={<Sparkles className="size-5" />} title="Stats" />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatTile icon={<ListChecks className="size-5" />} label="Quests Completed" value={stats.total_quests_completed} accent="bg-success/15 text-success-foreground" />
-                <StatTile icon={<Video className="size-5" />} label="Video Quizzes Taken" value={stats.total_tests_completed} accent="bg-info/15 text-info" />
-                <StatTile icon={<Flame className="size-5" />} label="Current Streak" value={`${stats.current_streak_days} days`} accent="bg-warning/15 text-warning-foreground" />
+                <StatTile
+                  icon={<ListChecks className="size-5" />}
+                  label="Quests Completed"
+                  value={stats.total_quests_completed}
+                  accent="bg-success/15 text-success-foreground"
+                />
+                <StatTile
+                  icon={<Video className="size-5" />}
+                  label="Video Quizzes Taken"
+                  value={stats.total_tests_completed}
+                  accent="bg-info/15 text-info"
+                />
+                <StatTile
+                  icon={<Flame className="size-5" />}
+                  label="Current Streak"
+                  value={`${stats.current_streak_days} days`}
+                  accent="bg-warning/15 text-warning-foreground"
+                />
                 <StatTile
                   icon={<Trophy className="size-5" />}
                   label="Best Video Quiz Score"
@@ -635,6 +757,25 @@ function KidProfilePage() {
             userId={String(userId)}
           />
         )}
+        {canAwardDirectReward && (
+          <GiveXpDrawer
+            open={rewardDrawerOpen}
+            onOpenChange={setRewardDrawerOpen}
+            child={resolvedProfile}
+            isPending={awardParentReward.isPending}
+            onSubmit={async (vals) => {
+              const result = await awardParentReward.mutateAsync(vals);
+              toast.success(
+                result.coinsAwarded > 0
+                  ? `Awarded ${result.xpAwarded.toLocaleString()} XP and ${result.coinsAwarded.toLocaleString()} coins.`
+                  : `Awarded ${result.xpAwarded.toLocaleString()} XP.`,
+              );
+              setRewardDrawerOpen(false);
+              setCelebrate(true);
+              window.setTimeout(() => setCelebrate(false), 2500);
+            }}
+          />
+        )}
       </div>
     </TooltipProvider>
   );
@@ -647,7 +788,7 @@ function Card({ children, className }: { children: React.ReactNode; className?: 
     <section
       className={cn(
         "rounded-3xl bg-card border-2 border-foreground/5 shadow-pop-sm p-5 md:p-6 space-y-4",
-        className
+        className,
       )}
       style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}
     >
@@ -656,7 +797,15 @@ function Card({ children, className }: { children: React.ReactNode; className?: 
   );
 }
 
-function SectionHeader({ icon, title, caption }: { icon?: React.ReactNode; title: string; caption?: string }) {
+function SectionHeader({
+  icon,
+  title,
+  caption,
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  caption?: string;
+}) {
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
@@ -681,7 +830,9 @@ function StatTile({
 }) {
   return (
     <div className="rounded-2xl bg-secondary/40 border-2 border-foreground/5 p-4 flex flex-col gap-1">
-      <div className={cn("inline-flex w-9 h-9 rounded-xl items-center justify-center", accent)}>{icon}</div>
+      <div className={cn("inline-flex w-9 h-9 rounded-xl items-center justify-center", accent)}>
+        {icon}
+      </div>
       <div className="font-display font-black text-2xl tabular-nums mt-1">{value}</div>
       <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{label}</div>
     </div>
@@ -695,14 +846,18 @@ function IdentityBlock({
   rank,
   familyName,
   isSelf,
+  canGiveXp,
   onEdit,
+  onGiveXp,
   onAvatarUpload,
 }: {
   profile: ProfileData;
   rank: string;
   familyName: string;
   isSelf: boolean;
+  canGiveXp: boolean;
   onEdit: () => void;
+  onGiveXp: () => void;
   onAvatarUpload: (file: File) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -735,7 +890,7 @@ function IdentityBlock({
             disabled={!isSelf}
             className={cn(
               "size-28 md:size-32 rounded-3xl border-4 border-card shadow-pop-sm bg-gradient-to-br from-primary to-primary-dark text-primary-foreground font-display font-black text-5xl flex items-center justify-center overflow-hidden",
-              isSelf && "cursor-pointer hover:scale-[1.02] transition"
+              isSelf && "cursor-pointer hover:scale-[1.02] transition",
             )}
             style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.12)" }}
           >
@@ -750,14 +905,22 @@ function IdentityBlock({
               <span className="absolute -bottom-1 -right-1 bg-warning text-warning-foreground rounded-full p-2 shadow-pop-sm border-2 border-card">
                 <Camera className="size-4" />
               </span>
-              <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={onPick} />
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={onPick}
+              />
             </>
           )}
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="font-display font-black text-3xl md:text-4xl truncate">{profile.nickname}</h1>
+            <h1 className="font-display font-black text-3xl md:text-4xl truncate">
+              {profile.nickname}
+            </h1>
             <span className="rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wide bg-warning text-warning-foreground shadow-pop-sm">
               {rank}
             </span>
@@ -768,11 +931,24 @@ function IdentityBlock({
           </div>
         </div>
 
-        {isSelf && (
-          <div className="md:self-center">
-            <Button onClick={onEdit} className="rounded-2xl shadow-pop-sm h-11 px-5 font-display font-extrabold uppercase">
-              <Pencil className="size-4" /> Edit profile
-            </Button>
+        {(isSelf || canGiveXp) && (
+          <div className="md:self-center flex flex-wrap gap-2">
+            {canGiveXp && (
+              <Button
+                onClick={onGiveXp}
+                className="rounded-2xl shadow-pop-sm h-11 px-5 font-display font-extrabold uppercase bg-purple hover:bg-purple/90 text-white"
+              >
+                <Gift className="size-4" /> Give XP
+              </Button>
+            )}
+            {isSelf && (
+              <Button
+                onClick={onEdit}
+                className="rounded-2xl shadow-pop-sm h-11 px-5 font-display font-extrabold uppercase"
+              >
+                <Pencil className="size-4" /> Edit profile
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -798,22 +974,12 @@ function BirthdayCountdown({ days }: { days: number }) {
   );
 }
 
-function BioSection({
-  profile,
-  isSelf,
-}: {
-  profile: ProfileData;
-  isSelf: boolean;
-}) {
-  const F = ({
-    label,
-    children,
-  }: {
-    label: string;
-    children: React.ReactNode;
-  }) => (
+function BioSection({ profile, isSelf }: { profile: ProfileData; isSelf: boolean }) {
+  const F = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div className="space-y-1.5">
-      <div className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
       {children}
     </div>
   );
@@ -829,7 +995,9 @@ function BioSection({
           <div className="font-bold">🦖 {profile.favorite_dino || "—"}</div>
         </F>
         <F label="Catchphrase">
-          <div className="font-bold italic">{profile.catchphrase ? `"${profile.catchphrase}"` : "—"}</div>
+          <div className="font-bold italic">
+            {profile.catchphrase ? `"${profile.catchphrase}"` : "—"}
+          </div>
         </F>
         <F label="Favorite Subject">
           <div className="font-bold">{profile.favorite_subject || "—"}</div>
@@ -840,7 +1008,11 @@ function BioSection({
           </F>
         </div>
       </div>
-      {isSelf && <div className="text-xs text-muted-foreground">Use Edit profile to update this section.</div>}
+      {isSelf && (
+        <div className="text-xs text-muted-foreground">
+          Use Edit profile to update this section.
+        </div>
+      )}
     </Card>
   );
 }
@@ -868,7 +1040,9 @@ function PersonalInfoSection({
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </div>
         <div className="font-bold text-sm mt-0.5">{children}</div>
       </div>
     </div>
@@ -900,7 +1074,11 @@ function PersonalInfoSection({
           {format(new Date(profile.joined_at), "MMM d, yyyy")}
         </Row>
       </div>
-      {isSelf && <div className="text-xs text-muted-foreground">Use Edit profile to update this section.</div>}
+      {isSelf && (
+        <div className="text-xs text-muted-foreground">
+          Use Edit profile to update this section.
+        </div>
+      )}
     </Card>
   );
 }
@@ -908,7 +1086,11 @@ function PersonalInfoSection({
 function MedalShowcase({ earned, locked }: { earned: Achievement[]; locked: Achievement[] }) {
   return (
     <Card>
-      <SectionHeader icon={<Trophy className="size-5" />} title="Medals & Achievements" caption={`${earned.length} earned`} />
+      <SectionHeader
+        icon={<Trophy className="size-5" />}
+        title="Medals & Achievements"
+        caption={`${earned.length} earned`}
+      />
       {earned.length === 0 && (
         <div className="text-sm text-muted-foreground text-center py-6">
           Complete quests and video quizzes to earn your first medal!
@@ -925,12 +1107,23 @@ function MedalShowcase({ earned, locked }: { earned: Achievement[]; locked: Achi
               >
                 <span className="text-3xl">{a.icon}</span>
                 <div className="text-xs font-extrabold text-center line-clamp-1">{a.name}</div>
-                <span className={cn("text-[10px] font-black uppercase px-1.5 rounded border", tierStyles(a.tier))}>{a.tier}</span>
+                <span
+                  className={cn(
+                    "text-[10px] font-black uppercase px-1.5 rounded border",
+                    tierStyles(a.tier),
+                  )}
+                >
+                  {a.tier}
+                </span>
               </button>
             </TooltipTrigger>
             <TooltipContent>
               <div className="font-bold">{a.description}</div>
-              {a.earned_at && <div className="text-xs opacity-80">Earned {format(new Date(a.earned_at), "MMM d, yyyy")}</div>}
+              {a.earned_at && (
+                <div className="text-xs opacity-80">
+                  Earned {format(new Date(a.earned_at), "MMM d, yyyy")}
+                </div>
+              )}
             </TooltipContent>
           </Tooltip>
         ))}
@@ -967,8 +1160,18 @@ function QuestTestSummary({ stats }: { stats: Stats }) {
       <SectionHeader icon={<Target className="size-5" />} title="Activity Summary" />
       <Tabs defaultValue="quests">
         <TabsList className="rounded-xl">
-          <TabsTrigger value="quests" className="rounded-lg font-display font-extrabold uppercase text-xs">Quests</TabsTrigger>
-          <TabsTrigger value="tests" className="rounded-lg font-display font-extrabold uppercase text-xs">Video Quizzes</TabsTrigger>
+          <TabsTrigger
+            value="quests"
+            className="rounded-lg font-display font-extrabold uppercase text-xs"
+          >
+            Quests
+          </TabsTrigger>
+          <TabsTrigger
+            value="tests"
+            className="rounded-lg font-display font-extrabold uppercase text-xs"
+          >
+            Video Quizzes
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="quests" className="space-y-4">
@@ -982,7 +1185,11 @@ function QuestTestSummary({ stats }: { stats: Stats }) {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={questData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0 0 0 / 0.08)" />
-                <XAxis dataKey="day" tick={{ fontSize: 11, fontWeight: 700 }} stroke="oklch(0 0 0 / 0.4)" />
+                <XAxis
+                  dataKey="day"
+                  tick={{ fontSize: 11, fontWeight: 700 }}
+                  stroke="oklch(0 0 0 / 0.4)"
+                />
                 <YAxis tick={{ fontSize: 11 }} stroke="oklch(0 0 0 / 0.4)" allowDecimals={false} />
                 <Bar dataKey="count" fill="oklch(0.74 0.18 142)" radius={[6, 6, 0, 0]} />
               </BarChart>
@@ -992,7 +1199,9 @@ function QuestTestSummary({ stats }: { stats: Stats }) {
 
         <TabsContent value="tests" className="space-y-4">
           {stats.total_tests_completed === 0 ? (
-            <div className="text-sm text-muted-foreground text-center py-8">No video quizzes completed yet</div>
+            <div className="text-sm text-muted-foreground text-center py-8">
+              No video quizzes completed yet
+            </div>
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -1004,9 +1213,19 @@ function QuestTestSummary({ stats }: { stats: Stats }) {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={testData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="oklch(0 0 0 / 0.08)" />
-                    <XAxis dataKey="attempt" tick={{ fontSize: 11, fontWeight: 700 }} stroke="oklch(0 0 0 / 0.4)" />
+                    <XAxis
+                      dataKey="attempt"
+                      tick={{ fontSize: 11, fontWeight: 700 }}
+                      stroke="oklch(0 0 0 / 0.4)"
+                    />
                     <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} stroke="oklch(0 0 0 / 0.4)" />
-                    <Line type="monotone" dataKey="score" stroke="oklch(0.65 0.2 260)" strokeWidth={3} dot={{ r: 5, fill: "oklch(0.65 0.2 260)" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="score"
+                      stroke="oklch(0.65 0.2 260)"
+                      strokeWidth={3}
+                      dot={{ r: 5, fill: "oklch(0.65 0.2 260)" }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -1021,7 +1240,9 @@ function QuestTestSummary({ stats }: { stats: Stats }) {
 function MiniStat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-xl bg-card border-2 border-foreground/5 p-3">
-      <div className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
       <div className="font-display font-black text-xl mt-0.5">{value}</div>
     </div>
   );
@@ -1040,12 +1261,23 @@ function ActivityFeed({ events }: { events: ActivityEv[] }) {
           {events.map((ev) => {
             const v = eventText(ev);
             return (
-              <li key={ev.id} className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-secondary/30 transition">
-                <div className={cn("size-9 rounded-xl flex items-center justify-center text-lg shrink-0", v.color)}>
+              <li
+                key={ev.id}
+                className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-secondary/30 transition"
+              >
+                <div
+                  className={cn(
+                    "size-9 rounded-xl flex items-center justify-center text-lg shrink-0",
+                    v.color,
+                  )}
+                >
                   {v.icon}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-bold leading-tight">{v.text}</div>
+                  {v.subtitle && (
+                    <div className="text-xs text-muted-foreground mt-0.5">{v.subtitle}</div>
+                  )}
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {formatDistanceToNow(new Date(ev.created_at), { addSuffix: true })}
                   </div>
@@ -1056,6 +1288,194 @@ function ActivityFeed({ events }: { events: ActivityEv[] }) {
         </ul>
       )}
     </Card>
+  );
+}
+
+// ---------- Give XP Drawer ----------
+
+const MAX_PARENT_REWARD_VALUE = 10_000_000;
+const XP_QUICK_ADD = [10_000, 25_000, 50_000, 100_000];
+const COIN_QUICK_ADD = [10_000, 25_000, 50_000, 100_000];
+
+const giveXpSchema = z.object({
+  xp: z.coerce.number().int().min(1, "XP must be at least 1").max(MAX_PARENT_REWARD_VALUE),
+  coins: z.coerce.number().int().min(0, "Coins cannot be negative").max(MAX_PARENT_REWARD_VALUE),
+  reason: z
+    .string()
+    .max(100, "Reason must be 100 characters or fewer")
+    .optional()
+    .or(z.literal("")),
+});
+
+type GiveXpValues = z.infer<typeof giveXpSchema>;
+
+function GiveXpDrawer({
+  open,
+  onOpenChange,
+  child,
+  isPending,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  child: ProfileData;
+  isPending: boolean;
+  onSubmit: (values: { xp: number; coins: number; reason?: string }) => Promise<void>;
+}) {
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    reset,
+    watch,
+    formState: { errors },
+  } = useForm<GiveXpValues>({
+    resolver: zodResolver(giveXpSchema),
+    defaultValues: {
+      xp: 10_000,
+      coins: 0,
+      reason: "",
+    },
+  });
+
+  useEffect(() => {
+    if (open) {
+      reset({ xp: 10_000, coins: 0, reason: "" });
+    }
+  }, [open, reset]);
+
+  const xp = watch("xp") ?? 0;
+  const coins = watch("coins") ?? 0;
+  const initial = child.nickname?.[0]?.toUpperCase() ?? "?";
+
+  const submit = handleSubmit(async (values) => {
+    const normalizedReason = values.reason?.trim();
+    await onSubmit({
+      xp: values.xp,
+      coins: values.coins,
+      reason: normalizedReason ? normalizedReason : undefined,
+    });
+  });
+
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent className="mx-auto w-full max-w-xl">
+        <DrawerHeader>
+          <div className="flex items-center gap-3">
+            <div className="size-12 rounded-2xl border-2 border-foreground/10 bg-gradient-to-br from-primary to-primary-dark text-white grid place-items-center font-display font-black text-xl overflow-hidden">
+              {child.avatar_url ? (
+                <img src={child.avatar_url} alt="" className="size-full object-cover" />
+              ) : (
+                initial
+              )}
+            </div>
+            <div>
+              <DrawerTitle className="font-display font-black text-xl">Give XP</DrawerTitle>
+              <DrawerDescription>{child.nickname}</DrawerDescription>
+            </div>
+          </div>
+        </DrawerHeader>
+        <form onSubmit={submit} className="px-4 pb-4 space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              XP amount
+            </Label>
+            <Input type="number" min={1} max={MAX_PARENT_REWARD_VALUE} {...register("xp")} />
+            <div className="flex flex-wrap gap-2">
+              {XP_QUICK_ADD.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() =>
+                    setValue(
+                      "xp",
+                      Math.min(MAX_PARENT_REWARD_VALUE, Math.max(1, Number(xp || 0) + value)),
+                      {
+                        shouldValidate: true,
+                        shouldDirty: true,
+                      },
+                    )
+                  }
+                  className="rounded-full border-2 border-border bg-secondary/60 px-3 py-1 text-xs font-extrabold"
+                >
+                  +{value.toLocaleString()}
+                </button>
+              ))}
+            </div>
+            {errors.xp?.message && (
+              <p className="text-xs font-bold text-destructive">{errors.xp.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              Coins (optional)
+            </Label>
+            <Input type="number" min={0} max={MAX_PARENT_REWARD_VALUE} {...register("coins")} />
+            <div className="flex flex-wrap gap-2">
+              {COIN_QUICK_ADD.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() =>
+                    setValue(
+                      "coins",
+                      Math.min(MAX_PARENT_REWARD_VALUE, Math.max(0, Number(coins || 0) + value)),
+                      {
+                        shouldValidate: true,
+                        shouldDirty: true,
+                      },
+                    )
+                  }
+                  className="rounded-full border-2 border-border bg-secondary/60 px-3 py-1 text-xs font-extrabold"
+                >
+                  +{value.toLocaleString()}
+                </button>
+              ))}
+            </div>
+            {errors.coins?.message && (
+              <p className="text-xs font-bold text-destructive">{errors.coins.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              Reason / note
+            </Label>
+            <Textarea
+              rows={2}
+              maxLength={100}
+              placeholder="e.g. Helped carry groceries 🛒"
+              {...register("reason")}
+            />
+            {errors.reason?.message && (
+              <p className="text-xs font-bold text-destructive">{errors.reason.message}</p>
+            )}
+          </div>
+
+          <DrawerFooter className="px-0 pb-0">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                className="flex-1"
+                disabled={isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1 bg-purple hover:bg-purple/90 text-white"
+                disabled={isPending}
+              >
+                {isPending ? "Awarding..." : "Award XP"}
+              </Button>
+            </div>
+          </DrawerFooter>
+        </form>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
@@ -1171,11 +1591,18 @@ function EditProfileDrawer({
             <Input {...register("favorite_dino")} maxLength={50} />
           </Field>
           <Field label="Favorite subject" error={errors.favorite_subject?.message as any}>
-            <Select value={watch("favorite_subject")} onValueChange={(v) => setValue("favorite_subject", v as any, { shouldDirty: true })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Select
+              value={watch("favorite_subject")}
+              onValueChange={(v) => setValue("favorite_subject", v as any, { shouldDirty: true })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 {FAV_SUBJECTS.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1193,10 +1620,19 @@ function EditProfileDrawer({
           </div>
 
           <SheetFooter className="flex flex-row gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} className="flex-1">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              className="flex-1"
+            >
               <X className="size-4" /> Cancel
             </Button>
-            <Button type="submit" disabled={updateProfileMutation.isPending} className="flex-1 rounded-xl shadow-pop-sm font-display font-extrabold uppercase">
+            <Button
+              type="submit"
+              disabled={updateProfileMutation.isPending}
+              className="flex-1 rounded-xl shadow-pop-sm font-display font-extrabold uppercase"
+            >
               <Save className="size-4" /> {updateProfileMutation.isPending ? "Saving…" : "Save"}
             </Button>
           </SheetFooter>
@@ -1218,11 +1654,18 @@ function Field({
   const id = useMemo(() => `f-${label.replace(/\s+/g, "-").toLowerCase()}`, [label]);
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id} className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+      <Label
+        htmlFor={id}
+        className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground"
+      >
         {label}
       </Label>
       <div aria-describedby={error ? `${id}-err` : undefined}>{children}</div>
-      {error && <div id={`${id}-err`} className="text-xs font-bold text-destructive">{error}</div>}
+      {error && (
+        <div id={`${id}-err`} className="text-xs font-bold text-destructive">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
@@ -1255,7 +1698,10 @@ function ConfettiStrip() {
       {Array.from({ length: 40 }).map((_, i) => (
         <span
           key={i}
-          className={cn("absolute top-0 w-2 h-3 rounded-sm animate-bounce", colors[i % colors.length])}
+          className={cn(
+            "absolute top-0 w-2 h-3 rounded-sm animate-bounce",
+            colors[i % colors.length],
+          )}
           style={{
             left: `${(i * 97) % 100}%`,
             animationDelay: `${(i % 10) * 0.1}s`,

@@ -23,7 +23,7 @@ from backend.schemas.family import FamilyCreate, FamilyOut, FamilyUpdate, Family
 from backend.schemas.invite import InviteOut
 from backend.schemas.join_request import JoinByCodeRequest, JoinDecision, JoinRequestOut
 from backend.schemas.leaderboard import LeaderboardEntryOut, LeaderboardPageOut
-from backend.schemas.member import MemberOut, MemberRoleUpdate
+from backend.schemas.member import LevelUpOut, MemberOut, MemberRoleUpdate, ParentRewardIn, ParentRewardOut
 from backend.schemas.pet import PetCreate, PetFeedOut, PetOut, PetPageOut, PetUpdate
 from backend.schemas.quest import (
     QuestAssignedMemberOut,
@@ -89,6 +89,9 @@ __all__ = [
     "LoginRequest",
     "MemberOut",
     "MemberRoleUpdate",
+    "LevelUpOut",
+    "ParentRewardIn",
+    "ParentRewardOut",
     "PetCreate",
     "PetFeedOut",
     "PetOut",

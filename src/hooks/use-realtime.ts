@@ -71,6 +71,7 @@ export function useFamilyRealtime(
           ) {
             queryClient.invalidateQueries({ queryKey: ["quests", familyId] });
             queryClient.invalidateQueries({ queryKey: ["family-activity", "activity", familyId] });
+            queryClient.invalidateQueries({ queryKey: ["family-activity", "audit", familyId] });
           }
           if (
             msg.event === "test_assigned" ||

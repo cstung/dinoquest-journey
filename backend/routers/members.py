@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from backend.database import get_db
-from backend.dependencies import get_active_membership, require_parent_or_superadmin
+from backend.dependencies import get_active_membership, require_parent, require_parent_or_superadmin
 from backend.models import ActivityLog, Family, FamilyMember, User, UserFamilyLevel, XpEvent
 from backend.realtime import emit_family_event
-from backend.schemas.member import LevelUpOut, MemberOut, MemberRoleUpdate
+from backend.schemas.member import LevelUpOut, MemberOut, MemberRoleUpdate, ParentRewardIn, ParentRewardOut
 from backend.services.family_service import auto_promote_or_delete
-from backend.services.xp_engine import XpReason, xp_cost_for_level_up
+from backend.services.xp_engine import XpReason, award_xp, xp_cost_for_level_up
 
 router = APIRouter()
 
@@ -132,6 +134,111 @@ async def remove_member(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/{family_id}/members/{user_id}/parent-reward", response_model=ParentRewardOut)
+async def award_parent_reward(
+    family_id: int,
+    user_id: int,
+    body: ParentRewardIn,
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> ParentRewardOut:
+    del family_id
+    if user_id == parent_member.user_id:
+        raise HTTPException(status_code=400, detail="Parent rewards can only target child members")
+
+    child_pair = (
+        await db.execute(
+            select(FamilyMember, User)
+            .join(User, User.id == FamilyMember.user_id)
+            .where(
+                FamilyMember.family_id == parent_member.family_id,
+                FamilyMember.user_id == user_id,
+                FamilyMember.role == "child",
+            )
+        )
+    ).one_or_none()
+    if not child_pair:
+        raise HTTPException(status_code=404, detail="Child member not found")
+
+    child_member, child_user = child_pair
+    _ = child_member
+    label = body.reason or "Parent reward"
+    now = datetime.now(timezone.utc)
+
+    level_row = await award_xp(
+        family_id=parent_member.family_id,
+        user_id=user_id,
+        delta=body.xp,
+        reason=XpReason.PARENT_REWARD,
+        db=db,
+        note=label,
+    )
+    if body.coins > 0:
+        level_row.coin_balance = max((level_row.coin_balance or 0) + body.coins, 0)
+
+    payload = {
+        "type": "parent_reward",
+        "label": label,
+        "xp": body.xp,
+        "coins": body.coins,
+        "timestamp": now.isoformat().replace("+00:00", "Z"),
+        "childId": user_id,
+        "parentId": parent_member.user_id,
+        "reason": body.reason,
+        "childName": child_user.username,
+        "audit": False,
+    }
+    audit_payload = {**payload, "audit": True}
+    db.add(
+        ActivityLog(
+            family_id=parent_member.family_id,
+            user_id=user_id,
+            event_type="parent_reward",
+            payload=payload,
+            is_audit=False,
+        )
+    )
+    db.add(
+        ActivityLog(
+            family_id=parent_member.family_id,
+            user_id=parent_member.user_id,
+            event_type="parent_reward",
+            payload=audit_payload,
+            is_audit=True,
+        )
+    )
+    await db.commit()
+
+    await emit_family_event(
+        parent_member.family_id,
+        "xp_earned",
+        {
+            "userId": user_id,
+            "delta": body.xp,
+            "coins": body.coins,
+            "reason": XpReason.PARENT_REWARD.value,
+            "label": label,
+            "parentId": parent_member.user_id,
+        },
+    )
+    await emit_family_event(
+        parent_member.family_id,
+        "leaderboard_update",
+        {"userId": user_id},
+    )
+
+    return ParentRewardOut(
+        child_user_id=user_id,
+        child_username=child_user.username,
+        xp_awarded=body.xp,
+        coins_awarded=body.coins,
+        xp_balance=level_row.xp_balance,
+        coin_balance=level_row.coin_balance,
+        level=level_row.level,
+        label=label,
+    )
+
+
 @router.post("/{family_id}/members/me/level-up", response_model=LevelUpOut)
 async def level_up_me(
     membership: FamilyMember = Depends(get_active_membership),
@@ -150,6 +257,7 @@ async def level_up_me(
             family_id=membership.family_id,
             user_id=membership.user_id,
             xp_balance=0,
+            coin_balance=0,
             level=1,
         )
         db.add(level_row)

@@ -22,6 +22,17 @@ export interface Member {
   joinedAt: string;
 }
 
+export interface ParentRewardResult {
+  childUserId: number;
+  childUsername: string;
+  xpAwarded: number;
+  coinsAwarded: number;
+  xpBalance: number;
+  coinBalance: number;
+  level: number;
+  label: string;
+}
+
 export interface Invite {
   id: number;
   familyId: number;
@@ -255,6 +266,27 @@ export function useRemoveMember(familyId: number | null) {
       queryClient.invalidateQueries({ queryKey: ["families"] });
       queryClient.invalidateQueries({ queryKey: ["family-activity", "activity", familyId] });
       queryClient.invalidateQueries({ queryKey: ["family-activity", "audit", familyId] });
+    },
+  });
+}
+
+export function useAwardParentReward(familyId: number | null, childUserId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { xp: number; coins?: number; reason?: string }) =>
+      apiRequest<ParentRewardResult>(
+        `/api/families/${familyId}/members/${childUserId}/parent-reward`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leaderboard", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["profile-leaderboard", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-activity", "activity", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["family-activity", "audit", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["activity", familyId, childUserId] });
     },
   });
 }

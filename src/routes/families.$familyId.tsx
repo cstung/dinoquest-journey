@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Users, Mail, Activity, Shield, Settings } from "lucide-react";
+import { ArrowLeft, Users, Mail, Activity, Shield, Settings, Gift } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
@@ -103,7 +103,11 @@ function FamilyDetail() {
       await revokeInvite.mutateAsync(inviteId);
       setActionResult({ title: "Updated", message: "Invite revoked.", variant: "success" });
     } catch (err) {
-      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -113,7 +117,11 @@ function FamilyDetail() {
       await updateMemberRole.mutateAsync({ userId, role });
       setActionResult({ title: "Updated", message: "Member role updated.", variant: "success" });
     } catch (err) {
-      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -123,7 +131,11 @@ function FamilyDetail() {
       await removeMember.mutateAsync(userId);
       setActionResult({ title: "Updated", message: "Member removed.", variant: "success" });
     } catch (err) {
-      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -136,7 +148,11 @@ function FamilyDetail() {
       }
       nav({ to: "/families" });
     } catch (err) {
-      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -150,7 +166,11 @@ function FamilyDetail() {
         variant: status === "approved" ? "success" : "warning",
       });
     } catch (err) {
-      setActionResult({ title: "Action Failed", message: (err as Error).message, variant: "error" });
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
     }
   };
 
@@ -283,7 +303,9 @@ function FamilyDetail() {
           </div>
           {latestJoinLink && (
             <div className="rounded-2xl bg-card border-2 border-border p-4 space-y-2">
-              <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Latest Join Link</p>
+              <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+                Latest Join Link
+              </p>
               <div className="flex gap-2">
                 <input
                   readOnly
@@ -292,10 +314,14 @@ function FamilyDetail() {
                 />
                 <button
                   type="button"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(latestJoinLink);
-                      setActionResult({ title: "Copied", message: "Join link copied.", variant: "info" });
-                    }}
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(latestJoinLink);
+                    setActionResult({
+                      title: "Copied",
+                      message: "Join link copied.",
+                      variant: "info",
+                    });
+                  }}
                   className="rounded-xl bg-secondary font-display font-extrabold uppercase text-xs px-4"
                 >
                   Copy Link
@@ -339,7 +365,11 @@ function FamilyDetail() {
                       type="button"
                       onClick={async () => {
                         await navigator.clipboard.writeText(inv.joinLink);
-                        setActionResult({ title: "Copied", message: "Join link copied.", variant: "info" });
+                        setActionResult({
+                          title: "Copied",
+                          message: "Join link copied.",
+                          variant: "info",
+                        });
                       }}
                       className="rounded-lg bg-secondary px-2 py-1 text-xs font-bold"
                     >
@@ -357,7 +387,11 @@ function FamilyDetail() {
                         type="button"
                         onClick={async () => {
                           await navigator.clipboard.writeText(inv.qrJoinLink as string);
-                          setActionResult({ title: "Copied", message: "QR join link copied.", variant: "info" });
+                          setActionResult({
+                            title: "Copied",
+                            message: "QR join link copied.",
+                            variant: "info",
+                          });
                         }}
                         className="rounded-lg bg-secondary px-2 py-1 text-xs font-bold"
                       >
@@ -378,14 +412,19 @@ function FamilyDetail() {
       {tab === "join-requests" && (
         <div className="space-y-3">
           {!canManageMembers ? (
-            <div className="text-sm text-muted-foreground">Only parents can manage join requests.</div>
+            <div className="text-sm text-muted-foreground">
+              Only parents can manage join requests.
+            </div>
           ) : joinRequestsQuery.isLoading ? (
             <div className="text-sm text-muted-foreground">Loading join requests...</div>
           ) : (joinRequestsQuery.data ?? []).length === 0 ? (
             <div className="text-sm text-muted-foreground">No pending join requests.</div>
           ) : (
             (joinRequestsQuery.data ?? []).map((req) => (
-              <div key={req.id} className="rounded-2xl bg-card border-2 border-border p-4 flex items-center gap-3">
+              <div
+                key={req.id}
+                className="rounded-2xl bg-card border-2 border-border p-4 flex items-center gap-3"
+              >
                 <div className="flex-1">
                   <p className="font-bold">{req.username}</p>
                   <p className="text-xs text-muted-foreground">
@@ -421,10 +460,23 @@ function FamilyDetail() {
               key={a.id}
               className="rounded-2xl bg-card border-2 border-border p-4 flex items-center gap-3 text-sm"
             >
-              <div className="size-9 rounded-xl bg-primary/15 grid place-items-center">⚔️</div>
+              <div
+                className={cn(
+                  "size-9 rounded-xl grid place-items-center",
+                  a.eventType === "parent_reward" ? "bg-purple/15 text-purple" : "bg-primary/15",
+                )}
+              >
+                {a.eventType === "parent_reward" ? (
+                  <Gift className="size-4" />
+                ) : (
+                  <Activity className="size-4" />
+                )}
+              </div>
               <div className="flex-1">
                 <span className="font-bold">{a.username ?? "System"}</span>{" "}
-                <span className="text-muted-foreground">{formatFamilyEvent(a.eventType, a.payload)}</span>
+                <span className="text-muted-foreground">
+                  {formatFamilyEvent(a.eventType, a.payload)}
+                </span>
               </div>
               <span className="text-xs text-muted-foreground">
                 {new Date(a.createdAt).toLocaleTimeString()}
@@ -444,10 +496,23 @@ function FamilyDetail() {
               key={a.id}
               className="rounded-2xl bg-card border-2 border-border p-4 flex items-center gap-3 text-sm"
             >
-              <div className="size-9 rounded-xl bg-warning/15 grid place-items-center">🛡️</div>
+              <div
+                className={cn(
+                  "size-9 rounded-xl grid place-items-center",
+                  a.eventType === "parent_reward" ? "bg-purple/15 text-purple" : "bg-warning/15",
+                )}
+              >
+                {a.eventType === "parent_reward" ? (
+                  <Gift className="size-4" />
+                ) : (
+                  <Shield className="size-4" />
+                )}
+              </div>
               <div className="flex-1">
                 <span className="font-bold">{a.username ?? "System"}</span>{" "}
-                <span className="text-muted-foreground">{formatFamilyEvent(a.eventType, a.payload)}</span>
+                <span className="text-muted-foreground">
+                  {formatFamilyEvent(a.eventType, a.payload)}
+                </span>
               </div>
               <span className="text-xs text-muted-foreground">
                 {new Date(a.createdAt).toLocaleTimeString()}
@@ -523,7 +588,23 @@ function formatFamilyEvent(eventType: string, payload: Record<string, unknown> |
     case "invite_revoked":
       return "revoked an invite";
     case "join_request_resolved":
-      return typeof p.status === "string" ? `resolved a join request (${p.status})` : "resolved a join request";
+      return typeof p.status === "string"
+        ? `resolved a join request (${p.status})`
+        : "resolved a join request";
+    case "parent_reward": {
+      const xp = Number(p.xp ?? 0);
+      const coins = Number(p.coins ?? 0);
+      const childName = typeof p.childName === "string" ? p.childName : "child";
+      const isAudit = p.audit === true;
+      if (isAudit) {
+        return coins > 0
+          ? `You awarded ${xp.toLocaleString()} XP and ${coins.toLocaleString()} coins to ${childName}`
+          : `You awarded ${xp.toLocaleString()} XP to ${childName}`;
+      }
+      return coins > 0
+        ? `received a direct reward (+${xp.toLocaleString()} XP, +${coins.toLocaleString()} coins)`
+        : `received a direct reward (+${xp.toLocaleString()} XP)`;
+    }
     default:
       return eventType.replaceAll("_", " ");
   }
