@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from typing import Literal
 
@@ -29,8 +30,11 @@ class Settings(BaseSettings):
     argon2_parallelism: int = 2
     argon2_rounds: int = 3
 
-    allowed_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:5007", "http://localhost:3000", "http://localhost:5173"]
+    # Keep this as plain string to avoid pydantic-settings pre-decoding failures on older versions.
+    allowed_origins: str = "http://localhost:5007,http://localhost:3000,http://localhost:5173"
+    resolved_allowed_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:5007", "http://localhost:3000", "http://localhost:5173"],
+        exclude=True,
     )
     app_base_url: str = "http://localhost:5007"
     cookie_domain: str = ""
@@ -51,14 +55,33 @@ class Settings(BaseSettings):
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
-    def parse_allowed_origins(cls, value: object) -> list[str]:
+    def normalize_allowed_origins(cls, value: object) -> str:
         if value is None:
-            return []
+            return ""
         if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            return value.strip()
         if isinstance(value, list):
-            return [str(origin).strip() for origin in value if str(origin).strip()]
-        raise ValueError("allowed_origins must be a comma-separated string or list")
+            return ",".join(str(origin).strip() for origin in value if str(origin).strip())
+        return str(value).strip()
+
+    @model_validator(mode="after")
+    def resolve_allowed_origins(self) -> "Settings":
+        raw_value = self.allowed_origins.strip()
+        if not raw_value:
+            self.resolved_allowed_origins = []
+            return self
+
+        if raw_value.startswith("["):
+            try:
+                decoded = json.loads(raw_value)
+            except json.JSONDecodeError:
+                decoded = None
+            if isinstance(decoded, list):
+                self.resolved_allowed_origins = [str(origin).strip() for origin in decoded if str(origin).strip()]
+                return self
+
+        self.resolved_allowed_origins = [origin.strip() for origin in raw_value.split(",") if origin.strip()]
+        return self
 
     @field_validator("secret_key")
     @classmethod
