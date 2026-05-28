@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-import base64
 import json
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import get_settings
 from backend.database import get_db
 from backend.dependencies import get_active_membership, require_parent
 from backend.models import (
@@ -63,6 +65,48 @@ def _display_name(member: FamilyMember | None, user: User | None) -> str:
     return (member.nickname if member and member.nickname else None) or (user.username if user else None) or "Member"
 
 
+def _wall_upload_dir() -> Path:
+    settings = get_settings()
+    db_path = Path(settings.db_path).expanduser()
+    if db_path == Path(":memory:"):
+        root = Path("./data").resolve()
+    else:
+        root = db_path.resolve().parent
+    upload_dir = root / "wall_uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    return upload_dir
+
+
+def _image_extension_from_media_type(media_type: str) -> str:
+    if media_type == "image/jpeg":
+        return "jpg"
+    if media_type == "image/png":
+        return "png"
+    if media_type == "image/gif":
+        return "gif"
+    if media_type == "image/webp":
+        return "webp"
+    return "bin"
+
+
+def _store_wall_image(
+    *,
+    family_id: int,
+    media_type: str,
+    raw: bytes,
+) -> str:
+    if not media_type.startswith("image/"):
+        raise HTTPException(status_code=422, detail="Uploaded file must be an image")
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image is too large (max 5MB)")
+
+    ext = _image_extension_from_media_type(media_type)
+    filename = f"family-{family_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:10]}.{ext}"
+    path = _wall_upload_dir() / filename
+    path.write_bytes(raw)
+    return f"/uploads/wall_uploads/{filename}"
+
+
 async def _family_members(db: AsyncSession, family_id: int) -> dict[int, tuple[FamilyMember, User | None]]:
     rows = await db.execute(
         select(FamilyMember, User)
@@ -72,36 +116,59 @@ async def _family_members(db: AsyncSession, family_id: int) -> dict[int, tuple[F
     return {member.user_id: (member, user) for member, user in rows.all()}
 
 
-async def _reaction_counts(db: AsyncSession, post_id: int, current_user_id: int) -> list[ReactionOut]:
+async def _reaction_counts_for_posts(
+    db: AsyncSession,
+    post_ids: list[int],
+    current_user_id: int,
+) -> dict[int, list[ReactionOut]]:
+    if not post_ids:
+        return {}
+
     rows = await db.execute(
         select(
+            FamilyWallReaction.post_id,
             FamilyWallReaction.emoji,
             func.count(FamilyWallReaction.id),
             func.max(case((FamilyWallReaction.user_id == current_user_id, 1), else_=0)),
         )
-        .where(FamilyWallReaction.post_id == post_id)
-        .group_by(FamilyWallReaction.emoji)
-        .order_by(FamilyWallReaction.emoji)
+        .where(FamilyWallReaction.post_id.in_(post_ids))
+        .group_by(FamilyWallReaction.post_id, FamilyWallReaction.emoji)
+        .order_by(FamilyWallReaction.post_id.asc(), FamilyWallReaction.emoji.asc())
     )
-    return [
-        ReactionOut(emoji=emoji, count=int(count), reacted_by_me=bool(reacted_by_me))
-        for emoji, count, reacted_by_me in rows.all()
-    ]
+    by_post: dict[int, list[ReactionOut]] = {post_id: [] for post_id in post_ids}
+    for post_id, emoji, count, reacted_by_me in rows.all():
+        by_post.setdefault(post_id, []).append(
+            ReactionOut(emoji=emoji, count=int(count), reacted_by_me=bool(reacted_by_me))
+        )
+    return by_post
 
 
-async def _comment_count(db: AsyncSession, post_id: int) -> int:
-    return int(
-        (
-            await db.execute(
-                select(func.count(FamilyWallComment.id)).where(FamilyWallComment.post_id == post_id)
-            )
-        ).scalar_one()
+async def _comment_counts_for_posts(db: AsyncSession, post_ids: list[int]) -> dict[int, int]:
+    if not post_ids:
+        return {}
+    rows = await db.execute(
+        select(FamilyWallComment.post_id, func.count(FamilyWallComment.id))
+        .where(FamilyWallComment.post_id.in_(post_ids))
+        .group_by(FamilyWallComment.post_id)
     )
+    counts = {post_id: 0 for post_id in post_ids}
+    counts.update({post_id: int(count) for post_id, count in rows.all()})
+    return counts
 
 
-async def _serialize_comment(db: AsyncSession, family_id: int, comment: FamilyWallComment) -> CommentOut:
-    members = await _family_members(db, family_id)
-    member, user = members.get(comment.author_id, (None, await db.get(User, comment.author_id)))  # type: ignore[assignment]
+def _display_name_from_lookup(
+    members: dict[int, tuple[FamilyMember, User | None]],
+    user_id: int,
+) -> str:
+    member, user = members.get(user_id, (None, None))
+    return _display_name(member, user)
+
+
+def _serialize_comment_with_members(
+    members: dict[int, tuple[FamilyMember, User | None]],
+    comment: FamilyWallComment,
+) -> CommentOut:
+    member, user = members.get(comment.author_id, (None, None))
     return CommentOut(
         id=comment.id,
         post_id=comment.post_id,
@@ -113,16 +180,24 @@ async def _serialize_comment(db: AsyncSession, family_id: int, comment: FamilyWa
     )
 
 
-async def _serialize_post(db: AsyncSession, post: FamilyWallPost, current_user_id: int) -> WallPostOut:
-    members = await _family_members(db, post.family_id)
+async def _serialize_comment(db: AsyncSession, family_id: int, comment: FamilyWallComment) -> CommentOut:
+    members = await _family_members(db, family_id)
+    return _serialize_comment_with_members(members, comment)
+
+
+def _serialize_post_with_context(
+    post: FamilyWallPost,
+    members: dict[int, tuple[FamilyMember, User | None]],
+    reactions_by_post: dict[int, list[ReactionOut]],
+    comment_counts: dict[int, int],
+) -> WallPostOut:
     author_member, author_user = (None, None)
     if post.author_id is not None:
-        author_member, author_user = members.get(post.author_id, (None, await db.get(User, post.author_id)))
+        author_member, author_user = members.get(post.author_id, (None, None))
 
     tags = []
     for user_id in post.tagged_user_ids or []:
-        member, user = members.get(user_id, (None, await db.get(User, user_id)))
-        tags.append(TagOut(user_id=user_id, nickname=_display_name(member, user)))
+        tags.append(TagOut(user_id=user_id, nickname=_display_name_from_lookup(members, user_id)))
 
     return WallPostOut(
         id=post.id,
@@ -135,9 +210,21 @@ async def _serialize_post(db: AsyncSession, post: FamilyWallPost, current_user_i
         sticker_url=post.sticker_url,
         is_boosted=post.is_boosted,
         tags=tags,
-        reaction_counts=await _reaction_counts(db, post.id, current_user_id),
-        comment_count=await _comment_count(db, post.id),
+        reaction_counts=reactions_by_post.get(post.id, []),
+        comment_count=comment_counts.get(post.id, 0),
         created_at=post.created_at,
+    )
+
+
+async def _serialize_post(db: AsyncSession, post: FamilyWallPost, current_user_id: int) -> WallPostOut:
+    members = await _family_members(db, post.family_id)
+    reactions_by_post = await _reaction_counts_for_posts(db, [post.id], current_user_id)
+    comment_counts = await _comment_counts_for_posts(db, [post.id])
+    return _serialize_post_with_context(
+        post=post,
+        members=members,
+        reactions_by_post=reactions_by_post,
+        comment_counts=comment_counts,
     )
 
 
@@ -172,8 +259,21 @@ async def dashboard_feed(
         .limit(limit + 1)
     )
     items = rows.scalars().all()
+    page_posts = items[:limit]
+    members = await _family_members(db, membership.family_id)
+    post_ids = [post.id for post in page_posts]
+    reactions_by_post = await _reaction_counts_for_posts(db, post_ids, membership.user_id)
+    comment_counts = await _comment_counts_for_posts(db, post_ids)
     return WallFeedOut(
-        posts=[await _serialize_post(db, post, membership.user_id) for post in items[:limit]],
+        posts=[
+            _serialize_post_with_context(
+                post=post,
+                members=members,
+                reactions_by_post=reactions_by_post,
+                comment_counts=comment_counts,
+            )
+            for post in page_posts
+        ],
         has_more=len(items) > limit,
     )
 
@@ -202,7 +302,11 @@ async def create_wall_post(
             raw = await image.read()
             if raw:
                 media_type = getattr(image, "content_type", None) or "application/octet-stream"
-                image_url = f"data:{media_type};base64,{base64.b64encode(raw).decode('ascii')}"
+                image_url = _store_wall_image(
+                    family_id=membership.family_id,
+                    media_type=media_type,
+                    raw=raw,
+                )
     else:
         payload = await request.json()
         body = WallPostCreate.model_validate(payload)
@@ -347,7 +451,8 @@ async def list_comments(
             .order_by(FamilyWallComment.created_at.asc(), FamilyWallComment.id.asc())
         )
     ).scalars().all()
-    return CommentsOut(comments=[await _serialize_comment(db, membership.family_id, comment) for comment in comments])
+    members = await _family_members(db, membership.family_id)
+    return CommentsOut(comments=[_serialize_comment_with_members(members, comment) for comment in comments])
 
 
 @router.post("/{family_id}/wall-posts/{post_id}/comments", response_model=CommentOut, status_code=status.HTTP_201_CREATED)

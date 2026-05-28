@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -53,6 +53,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
 import { MOOD_ICON_OPTIONS } from "@/lib/mood-icons";
+import { FAMILY_REALTIME_MESSAGE_EVENT, FAMILY_REALTIME_STATUS_EVENT } from "@/hooks/use-realtime";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { useAwardParentReward } from "@/hooks/use-families";
 
@@ -273,7 +274,7 @@ function FamilyDashboardPage() {
     enabled: hasValidFamilyId && !!user,
   });
 
-  const setPosts = (updater: (prev: WallPost[]) => WallPost[]) => {
+  const setPosts = useCallback((updater: (prev: WallPost[]) => WallPost[]) => {
     queryClient.setQueryData(
       ["wall-feed", familyId, page],
       (old: { posts: WallPost[]; hasMore: boolean } | undefined) => ({
@@ -281,11 +282,11 @@ function FamilyDashboardPage() {
         hasMore: old?.hasMore ?? hasMore,
       }),
     );
-  };
+  }, [familyId, hasMore, page, queryClient]);
 
-  const prependPostOnce = (post: WallPost) => {
+  const prependPostOnce = useCallback((post: WallPost) => {
     setPosts((prev) => [post, ...prev.filter((p) => p.id !== post.id)]);
-  };
+  }, [setPosts]);
 
   const postMutation = useMutation({
     mutationFn: async ({ text, sticker, imageFile, tags, postType }: PostPayload) => {
@@ -581,139 +582,110 @@ function FamilyDashboardPage() {
 
   useEffect(() => {
     if (!hasValidFamilyId || !isAuthenticated) return;
-    let ws: WebSocket | null = null;
-    let closed = false;
-    let reconnectTimer: number | null = null;
 
-    const wsBaseUrl = () => {
-      const explicit = import.meta.env.VITE_WS_BASE_URL as string | undefined;
-      if (explicit && explicit.trim()) return explicit.replace(/\/$/, "");
-      const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
-      if (apiBase) {
-        const normalized = apiBase.replace(/\/$/, "");
-        if (normalized.startsWith("https://")) return normalized.replace("https://", "wss://");
-        if (normalized.startsWith("http://")) return normalized.replace("http://", "ws://");
-      }
-      const proto = window.location.protocol === "https:" ? "wss" : "ws";
-      return `${proto}://${window.location.host}`;
+    const onStatus = (event: Event) => {
+      const customEvent = event as CustomEvent<{ familyId: number; connected: boolean }>;
+      if (customEvent.detail.familyId !== familyId) return;
+      setWsConnected(customEvent.detail.connected);
     };
 
-    const connect = async () => {
-      try {
-        const tokenData = await apiRequest<{ wsToken: string }>("/api/auth/ws-token");
-        if (closed) return;
-        ws = new WebSocket(
-          `${wsBaseUrl()}/ws/families/${familyId}?token=${encodeURIComponent(tokenData.wsToken)}`,
+    const onMessage = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        familyId: number;
+        message: { event: string; payload?: unknown };
+      }>;
+      if (customEvent.detail.familyId !== familyId) return;
+      const msg = customEvent.detail.message;
+
+      if (msg.event === "wall_post_created" || msg.event === "weekly_recap_posted") {
+        const post = msg.payload as WallPost;
+        if (post.authorId === currentUserId) {
+          prependPostOnce(post);
+          setPendingPosts((pending) => pending.filter((item) => item.id !== post.id));
+          return;
+        }
+        setPendingPosts((pending) =>
+          pending.some((item) => item.id === post.id) ? pending : [...pending, post],
         );
-        ws.onopen = () => setWsConnected(true);
-        ws.onclose = () => {
-          setWsConnected(false);
-          if (closed) return;
-          reconnectTimer = window.setTimeout(connect, 2000);
+        return;
+      }
+
+      if (msg.event === "wall_reaction_updated") {
+        const { postId, emoji, count, reactedByMe } = msg.payload as {
+          postId: number;
+          emoji: string;
+          count: number;
+          reactedByMe: boolean;
         };
-        ws.onerror = () => setWsConnected(false);
-        ws.onmessage = (ev) => {
-          let msg: { event: string; payload?: any } | null = null;
-          try {
-            msg = JSON.parse(ev.data) as { event: string; payload?: any };
-          } catch {
-            return;
-          }
-          if (!msg?.event) return;
-
-          if (msg.event === "wall_post_created" || msg.event === "weekly_recap_posted") {
-            const post = msg.payload as WallPost;
-            if (post.authorId === currentUserId) {
-              prependPostOnce(post);
-              setPendingPosts((pending) => pending.filter((item) => item.id !== post.id));
-              return;
+        setPosts((prev) =>
+          prev.map((p) => {
+            if (p.id !== postId) return p;
+            const next = [...p.reactionCounts];
+            const idx = next.findIndex((r) => r.emoji === emoji);
+            if (count <= 0) {
+              return { ...p, reactionCounts: next.filter((r) => r.emoji !== emoji) };
             }
-            setPendingPosts((pending) =>
-              pending.some((item) => item.id === post.id) ? pending : [...pending, post],
-            );
-            return;
-          }
-
-          if (msg.event === "wall_reaction_updated") {
-            const { postId, emoji, count, reactedByMe } = msg.payload as {
-              postId: number;
-              emoji: string;
-              count: number;
-              reactedByMe: boolean;
-            };
-            setPosts((prev) =>
-              prev.map((p) => {
-                if (p.id !== postId) return p;
-                const next = [...p.reactionCounts];
-                const idx = next.findIndex((r) => r.emoji === emoji);
-                if (count <= 0) {
-                  return { ...p, reactionCounts: next.filter((r) => r.emoji !== emoji) };
-                }
-                if (idx >= 0) {
-                  next[idx] = { ...next[idx], count, reactedByMe };
-                } else {
-                  next.push({ emoji, count, reactedByMe });
-                }
-                return { ...p, reactionCounts: next };
-              }),
-            );
-            return;
-          }
-
-          if (msg.event === "wall_comment_added") {
-            const { postId, comment } = msg.payload as { postId: number; comment: Comment };
-            if (comment.authorId === currentUserId) {
-              return;
+            if (idx >= 0) {
+              next[idx] = { ...next[idx], count, reactedByMe };
+            } else {
+              next.push({ emoji, count, reactedByMe });
             }
-            let shouldIncrement = true;
-            if (openThreadsRef.current.has(postId)) {
-              setCommentsByPost((m) => ({
-                ...m,
-                [postId]: (() => {
-                  const existing = m[postId] ?? [];
-                  shouldIncrement = !existing.some((item) => item.id === comment.id);
-                  return shouldIncrement ? [...existing, comment] : existing;
-                })(),
-              }));
-            }
-            if (shouldIncrement) {
-              setPosts((prev) =>
-                prev.map((p) => (p.id === postId ? { ...p, commentCount: p.commentCount + 1 } : p)),
-              );
-            }
-            return;
-          }
+            return { ...p, reactionCounts: next };
+          }),
+        );
+        return;
+      }
 
-          if (msg.event === "mood_checkin") {
-            refetchMoods();
-            return;
-          }
+      if (msg.event === "wall_comment_added") {
+        const { postId, comment } = msg.payload as { postId: number; comment: Comment };
+        if (comment.authorId === currentUserId) {
+          return;
+        }
+        let shouldIncrement = true;
+        if (openThreadsRef.current.has(postId)) {
+          setCommentsByPost((m) => ({
+            ...m,
+            [postId]: (() => {
+              const existing = m[postId] ?? [];
+              shouldIncrement = !existing.some((item) => item.id === comment.id);
+              return shouldIncrement ? [...existing, comment] : existing;
+            })(),
+          }));
+        }
+        if (shouldIncrement) {
+          setPosts((prev) =>
+            prev.map((p) => (p.id === postId ? { ...p, commentCount: p.commentCount + 1 } : p)),
+          );
+        }
+        return;
+      }
 
-          if (msg.event === "pin_created" || msg.event === "pin_removed") {
-            refetchPins();
-          }
-        };
-      } catch {
-        setWsConnected(false);
-        if (!closed) reconnectTimer = window.setTimeout(connect, 3000);
+      if (msg.event === "mood_checkin") {
+        refetchMoods();
+        return;
+      }
+
+      if (msg.event === "pin_created" || msg.event === "pin_removed") {
+        refetchPins();
       }
     };
 
-    connect();
+    window.addEventListener(FAMILY_REALTIME_STATUS_EVENT, onStatus);
+    window.addEventListener(FAMILY_REALTIME_MESSAGE_EVENT, onMessage);
 
     return () => {
-      closed = true;
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
+      window.removeEventListener(FAMILY_REALTIME_STATUS_EVENT, onStatus);
+      window.removeEventListener(FAMILY_REALTIME_MESSAGE_EVENT, onMessage);
     };
   }, [
     currentUserId,
     familyId,
     hasValidFamilyId,
     isAuthenticated,
-    queryClient,
+    prependPostOnce,
     refetchMoods,
     refetchPins,
+    setPosts,
   ]);
 
   if (!hasValidFamilyId) {
@@ -815,15 +787,6 @@ function FamilyDashboardPage() {
             </div>
           )}
 
-          <div className="text-center pt-2">
-            {/* TODO: build archived feed page */}
-            <Link
-              to={`/families/${familyId}/dashboard/activity` as any}
-              className="text-sm font-bold text-primary-dark hover:underline"
-            >
-              View older activity →
-            </Link>
-          </div>
         </div>
 
         {/* RIGHT — side rail */}

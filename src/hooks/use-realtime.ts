@@ -7,6 +7,19 @@ type RealtimeMessage = {
   payload?: Record<string, unknown>;
 };
 
+export const FAMILY_REALTIME_MESSAGE_EVENT = "dq:family-realtime-message";
+export const FAMILY_REALTIME_STATUS_EVENT = "dq:family-realtime-status";
+
+type FamilyRealtimeMessageDetail = {
+  familyId: number;
+  message: RealtimeMessage;
+};
+
+type FamilyRealtimeStatusDetail = {
+  familyId: number;
+  connected: boolean;
+};
+
 function wsBaseUrl(): string {
   const explicit = import.meta.env.VITE_WS_BASE_URL as string | undefined;
   if (explicit && explicit.trim()) return explicit.replace(/\/$/, "");
@@ -44,6 +57,13 @@ export function useFamilyRealtime(
         if (closed) return;
         const url = `${wsBaseUrl()}/ws/families/${familyId}?token=${encodeURIComponent(token)}`;
         ws = new WebSocket(url);
+        ws.onopen = () => {
+          window.dispatchEvent(
+            new CustomEvent<FamilyRealtimeStatusDetail>(FAMILY_REALTIME_STATUS_EVENT, {
+              detail: { familyId, connected: true },
+            }),
+          );
+        };
         ws.onmessage = (ev) => {
           let msg: RealtimeMessage | null = null;
           try {
@@ -53,6 +73,11 @@ export function useFamilyRealtime(
           }
           if (!msg?.event) return;
           if (msg.event === "pong") return;
+          window.dispatchEvent(
+            new CustomEvent<FamilyRealtimeMessageDetail>(FAMILY_REALTIME_MESSAGE_EVENT, {
+              detail: { familyId, message: msg },
+            }),
+          );
 
           if (
             msg.event === "xp_earned" ||
@@ -96,10 +121,27 @@ export function useFamilyRealtime(
           }
         };
         ws.onclose = () => {
+          window.dispatchEvent(
+            new CustomEvent<FamilyRealtimeStatusDetail>(FAMILY_REALTIME_STATUS_EVENT, {
+              detail: { familyId, connected: false },
+            }),
+          );
           if (closed) return;
           reconnectTimer = window.setTimeout(connect, 2000);
         };
+        ws.onerror = () => {
+          window.dispatchEvent(
+            new CustomEvent<FamilyRealtimeStatusDetail>(FAMILY_REALTIME_STATUS_EVENT, {
+              detail: { familyId, connected: false },
+            }),
+          );
+        };
       } catch {
+        window.dispatchEvent(
+          new CustomEvent<FamilyRealtimeStatusDetail>(FAMILY_REALTIME_STATUS_EVENT, {
+            detail: { familyId, connected: false },
+          }),
+        );
         if (!closed) reconnectTimer = window.setTimeout(connect, 3000);
       }
     };

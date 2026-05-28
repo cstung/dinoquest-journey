@@ -10,7 +10,6 @@ import {
   Gift,
   Users,
   Shield,
-  Medal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useFamilyStore } from "@/store";
@@ -24,7 +23,6 @@ const navItems = [
   { icon: Trophy, label: "Leaderboard", to: "/leaderboard" },
   { icon: Egg, label: "Pets", to: "/pets" },
   { icon: Gift, label: "Rewards", to: "/rewards" },
-  { icon: Medal, label: "Achievements", to: "/achievements" },
 ] as const;
 
 export function Sidebar() {
@@ -131,10 +129,14 @@ export function Sidebar() {
               </span>
               <span className="text-xs font-bold text-primary-dark">🔥 {streak}d</span>
             </div>
-            <XPBar currentXP={currentXp} maxXP={xpToNext} level={level} size="sm" showNumbers={false} />
-            <div className="text-xs text-muted-foreground tabular-nums">
-              {balance} XP balance
-            </div>
+            <XPBar
+              currentXP={currentXp}
+              maxXP={xpToNext}
+              level={level}
+              size="sm"
+              showNumbers={false}
+            />
+            <div className="text-xs text-muted-foreground tabular-nums">{balance} XP balance</div>
           </div>
         </div>
       )}

@@ -65,7 +65,7 @@ The API will be available at `http://localhost:8122`.
    ```bash
    npm run dev
    ```
-The frontend will be available at `http://localhost:3000` (or as specified by Vite). The frontend dev server is configured to proxy API requests (`/api`) and WebSocket connections (`/ws`) to the backend at port 8122.
+The frontend will be available at `http://localhost:5007` (or as specified by Vite). The frontend dev server is configured to proxy API requests (`/api`) and WebSocket connections (`/ws`) to the backend at port 8122.
 
 ## Project Structure
 - `src/` - Frontend React application code (components, routes, store).

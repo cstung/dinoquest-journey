@@ -30,6 +30,7 @@ async def _fetch_activity_page(
     is_audit: bool,
     cursor: str | None,
     limit: int,
+    include_total: bool,
     db: AsyncSession,
 ) -> ActivityPageOut:
     created_before = _to_utc_datetime(cursor)
@@ -48,14 +49,19 @@ async def _fetch_activity_page(
     has_more = len(pairs) > limit
     page_pairs = pairs[:limit]
 
-    total = (
-        await db.execute(
-            select(func.count(ActivityLog.id)).where(
-                ActivityLog.family_id == family_id,
-                ActivityLog.is_audit.is_(is_audit),
-            )
+    if include_total:
+        total = int(
+            (
+                await db.execute(
+                    select(func.count(ActivityLog.id)).where(
+                        ActivityLog.family_id == family_id,
+                        ActivityLog.is_audit.is_(is_audit),
+                    )
+                )
+            ).scalar_one()
         )
-    ).scalar_one()
+    else:
+        total = 0
 
     items = [
         ActivityItemOut(
@@ -74,7 +80,7 @@ async def _fetch_activity_page(
     if has_more and page_pairs:
         next_cursor = page_pairs[-1][0].created_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
-    return ActivityPageOut(items=items, next_cursor=next_cursor, total=int(total))
+    return ActivityPageOut(items=items, next_cursor=next_cursor, total=total)
 
 
 @router.get("/{family_id}/activity", response_model=ActivityPageOut)
@@ -82,6 +88,7 @@ async def family_activity(
     membership: FamilyMember = Depends(get_active_membership),
     cursor: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
+    include_total: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ) -> ActivityPageOut:
     # Parents and children can view regular family activity.
@@ -90,6 +97,7 @@ async def family_activity(
         is_audit=False,
         cursor=cursor,
         limit=limit,
+        include_total=include_total,
         db=db,
     )
 
@@ -99,6 +107,7 @@ async def family_audit(
     parent_member: FamilyMember = Depends(require_parent),
     cursor: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
+    include_total: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ) -> ActivityPageOut:
     return await _fetch_activity_page(
@@ -106,6 +115,6 @@ async def family_audit(
         is_audit=True,
         cursor=cursor,
         limit=limit,
+        include_total=include_total,
         db=db,
     )
-

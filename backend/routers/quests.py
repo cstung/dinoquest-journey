@@ -73,11 +73,40 @@ def _monthly_anchor_day(base_dt: datetime) -> int:
 
 
 async def _load_assigned_members(quest_id: int, db: AsyncSession) -> list[QuestAssignedMemberOut]:
-    latest_cycle = select(func.max(QuestAssignment.cycle_index)).where(
-        QuestAssignment.quest_id == quest_id
-    ).scalar_subquery()
+    by_quest = await _load_latest_assigned_members_for_quests(
+        family_id=None,
+        quest_ids=[quest_id],
+        db=db,
+    )
+    return by_quest.get(quest_id, [])
+
+
+async def _load_latest_assigned_members_for_quests(
+    *,
+    family_id: int | None,
+    quest_ids: list[int],
+    db: AsyncSession,
+) -> dict[int, list[QuestAssignedMemberOut]]:
+    if not quest_ids:
+        return {}
+
+    latest_cycle_query = select(
+        QuestAssignment.quest_id.label("quest_id"),
+        func.max(QuestAssignment.cycle_index).label("latest_cycle"),
+    ).where(QuestAssignment.quest_id.in_(quest_ids))
+    if family_id is not None:
+        latest_cycle_query = latest_cycle_query.where(QuestAssignment.family_id == family_id)
+    latest_cycle = latest_cycle_query.group_by(QuestAssignment.quest_id).subquery()
+
     rows = await db.execute(
         select(QuestAssignment, User, FamilyMember.avatar_color)
+        .join(
+            latest_cycle,
+            and_(
+                latest_cycle.c.quest_id == QuestAssignment.quest_id,
+                latest_cycle.c.latest_cycle == QuestAssignment.cycle_index,
+            ),
+        )
         .join(User, User.id == QuestAssignment.user_id)
         .outerjoin(
             FamilyMember,
@@ -86,46 +115,53 @@ async def _load_assigned_members(quest_id: int, db: AsyncSession) -> list[QuestA
                 FamilyMember.user_id == QuestAssignment.user_id,
             ),
         )
-        .where(
-            QuestAssignment.quest_id == quest_id,
-            QuestAssignment.cycle_index == latest_cycle,
-        )
-        .order_by(QuestAssignment.id.asc())
+        .where(QuestAssignment.quest_id.in_(quest_ids))
+        .order_by(QuestAssignment.quest_id.asc(), QuestAssignment.id.asc())
     )
-    return [
-        QuestAssignedMemberOut(
-            assignment_id=assignment.id,
-            user_id=assignment.user_id,
-            username=user.username,
-            avatar_color=avatar_color,
-            status=assignment.status,
-            completion_requested_at=assignment.completion_requested_at,
-            completed_at=assignment.completed_at,
-            cycle_index=assignment.cycle_index,
-            cycle_due_at=assignment.cycle_due_at,
-            cycle_start_at=assignment.cycle_start_at,
+
+    assigned_by_quest: dict[int, list[QuestAssignedMemberOut]] = {quest_id: [] for quest_id in quest_ids}
+    for assignment, user, avatar_color in rows.all():
+        assigned_by_quest.setdefault(assignment.quest_id, []).append(
+            QuestAssignedMemberOut(
+                assignment_id=assignment.id,
+                user_id=assignment.user_id,
+                username=user.username,
+                avatar_color=avatar_color,
+                status=assignment.status,
+                completion_requested_at=assignment.completion_requested_at,
+                completed_at=assignment.completed_at,
+                cycle_index=assignment.cycle_index,
+                cycle_due_at=assignment.cycle_due_at,
+                cycle_start_at=assignment.cycle_start_at,
+            )
         )
-        for assignment, user, avatar_color in rows.all()
-    ]
+    return assigned_by_quest
 
 
-async def _quest_item(quest: Quest, db: AsyncSession, membership: FamilyMember) -> QuestItemOut:
-    assigned = await _load_assigned_members(quest.id, db)
-
+def _quest_status_for_membership(
+    assigned_members: list[QuestAssignedMemberOut],
+    membership: FamilyMember,
+) -> str:
     if membership.role == "child":
-        mine = next((row for row in assigned if row.user_id == membership.user_id), None)
-        my_status = mine.status if mine else "pending"
-    else:
-        statuses = [row.status for row in assigned]
-        if statuses and all(status_value == "completed" for status_value in statuses):
-            my_status = "completed"
-        elif "pending_approval" in statuses:
-            my_status = "pending_approval"
-        elif "missed" in statuses:
-            my_status = "missed"
-        else:
-            my_status = "pending"
+        mine = next((row for row in assigned_members if row.user_id == membership.user_id), None)
+        return mine.status if mine else "pending"
 
+    statuses = [row.status for row in assigned_members]
+    if statuses and all(status_value == "completed" for status_value in statuses):
+        return "completed"
+    if "pending_approval" in statuses:
+        return "pending_approval"
+    if "missed" in statuses:
+        return "missed"
+    return "pending"
+
+
+def _quest_item_from_assigned(
+    quest: Quest,
+    assigned_members: list[QuestAssignedMemberOut],
+    membership: FamilyMember,
+) -> QuestItemOut:
+    my_status = _quest_status_for_membership(assigned_members, membership)
     return QuestItemOut(
         id=quest.id,
         title=quest.title,
@@ -139,9 +175,14 @@ async def _quest_item(quest: Quest, db: AsyncSession, membership: FamilyMember) 
         next_occurrence_at=quest.next_occurrence_at,
         recurrence_end_at=quest.recurrence_end_at,
         status=my_status,
-        assigned_members=assigned,
+        assigned_members=assigned_members,
         created_at=quest.created_at,
     )
+
+
+async def _quest_item(quest: Quest, db: AsyncSession, membership: FamilyMember) -> QuestItemOut:
+    assigned = await _load_assigned_members(quest.id, db)
+    return _quest_item_from_assigned(quest, assigned, membership)
 
 
 @router.get("/{family_id}/quests", response_model=QuestPageOut)
@@ -194,9 +235,19 @@ async def list_quests(
     has_more = len(quests) > limit
     page_quests = quests[:limit]
 
+    assigned_by_quest = await _load_latest_assigned_members_for_quests(
+        family_id=membership.family_id,
+        quest_ids=[quest.id for quest in page_quests],
+        db=db,
+    )
+
     items: list[QuestItemOut] = []
     for quest in page_quests:
-        item = await _quest_item(quest, db, membership)
+        item = _quest_item_from_assigned(
+            quest,
+            assigned_by_quest.get(quest.id, []),
+            membership,
+        )
         if membership.role != "child" and status_filter in {"pending", "pending_approval", "completed", "missed"}:
             if item.status != status_filter:
                 continue

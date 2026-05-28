@@ -27,7 +27,6 @@ import {
   Flame,
   Target,
   CheckCircle2,
-  Lock,
   Sparkles,
   ListChecks,
   Video,
@@ -56,7 +55,6 @@ import {
   SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -78,16 +76,6 @@ export const Route = createFileRoute("/profile/$userId")({
 const FAV_SUBJECTS = ["Math", "Science", "Reading", "Art", "Music", "PE", "Other"] as const;
 const GENDERS = ["Boy", "Girl", "Prefer not to say"] as const;
 const GRADES = Array.from({ length: 12 }, (_, i) => `Grade ${i + 1}`);
-
-type Tier = "bronze" | "silver" | "gold" | "platinum";
-interface Achievement {
-  id: number;
-  name: string;
-  description: string;
-  tier: Tier;
-  icon: string;
-  earned_at?: string;
-}
 interface ProfileData {
   id: number;
   username: string;
@@ -128,9 +116,7 @@ interface ActivityEv {
     | "quest_missed"
     | "test_completed"
     | "level_up"
-    | "achievement_earned"
     | "reward_claim_requested"
-    | "streak_milestone"
     | "xp_earned"
     | "parent_reward";
   created_at: string;
@@ -208,19 +194,6 @@ function rankFromLevel(level: number): string {
   return "Dino God";
 }
 
-function tierStyles(tier: Tier) {
-  switch (tier) {
-    case "bronze":
-      return "bg-amber-100 text-amber-800 border-amber-300";
-    case "silver":
-      return "bg-slate-100 text-slate-700 border-slate-300";
-    case "gold":
-      return "bg-warning/20 text-warning-foreground border-warning";
-    case "platinum":
-      return "bg-purple/20 text-purple border-purple/40";
-  }
-}
-
 function daysUntilBirthday(iso: string | null): number | null {
   if (!iso) return null;
   const today = new Date();
@@ -274,23 +247,11 @@ function eventText(ev: ActivityEv): {
         color: "bg-warning/15 text-warning-foreground",
         text: `Reached Level ${ev.payload.new_level ?? ev.payload.level ?? "new"}!`,
       };
-    case "achievement_earned":
-      return {
-        icon: "??",
-        color: "bg-purple/15 text-purple",
-        text: `Earned "${ev.payload.achievement_name}" Medal`,
-      };
     case "reward_claim_requested":
       return {
         icon: "??",
         color: "bg-pink/15 text-pink",
         text: `Claimed "${ev.payload.reward_title ?? "a reward"}" reward`,
-      };
-    case "streak_milestone":
-      return {
-        icon: "??",
-        color: "bg-warning/15 text-warning-foreground",
-        text: `${ev.payload.n}-day streak achieved!`,
       };
     case "xp_earned":
       return {
@@ -356,7 +317,7 @@ function KidProfilePage() {
     queryKey: ["profile-leaderboard", activeFamilyId],
     queryFn: () =>
       apiRequest<LeaderboardPage>(
-        `/api/families/${activeFamilyId}/leaderboard?scope=family&limit=200`,
+        `/api/families/${activeFamilyId}/leaderboard?scope=family&limit=50`,
       ),
     enabled: !!activeFamilyId && !!userId,
     retry: false,
@@ -364,14 +325,14 @@ function KidProfilePage() {
   });
   const { data: questsData, isLoading: questsLoading } = useQuery({
     queryKey: ["profile-quests", activeFamilyId],
-    queryFn: () => apiRequest<QuestPage>(`/api/families/${activeFamilyId}/quests?limit=100`),
+    queryFn: () => apiRequest<QuestPage>(`/api/families/${activeFamilyId}/quests?limit=40`),
     enabled: !!activeFamilyId && !!userId,
     retry: false,
     refetchOnWindowFocus: false,
   });
   const { data: testsData, isLoading: testsLoading } = useQuery({
     queryKey: ["profile-tests", activeFamilyId],
-    queryFn: () => apiRequest<TestPage>(`/api/families/${activeFamilyId}/tests?limit=100`),
+    queryFn: () => apiRequest<TestPage>(`/api/families/${activeFamilyId}/tests?limit=40`),
     enabled: !!activeFamilyId && !!userId,
     retry: false,
     refetchOnWindowFocus: false,
@@ -396,9 +357,7 @@ function KidProfilePage() {
         "quest_missed",
         "test_completed",
         "level_up",
-        "achievement_earned",
         "reward_claim_requested",
-        "streak_milestone",
         "xp_earned",
         "parent_reward",
       ]);
@@ -413,20 +372,6 @@ function KidProfilePage() {
       payload: row.payload ?? {},
     }));
   }, [allEventsForUser]);
-  const earned = useMemo<Achievement[]>(() => {
-    return allEventsForUser
-      .filter((row) => row.eventType === "achievement_earned")
-      .slice(0, 24)
-      .map((row, idx) => ({
-        id: row.id,
-        name: String(row.payload?.achievement_name ?? `Achievement ${idx + 1}`),
-        description: "Earned in family activity",
-        tier: "bronze",
-        icon: "🏅",
-        earned_at: row.createdAt,
-      }));
-  }, [allEventsForUser]);
-  const locked: Achievement[] = [];
   const stats = useMemo<Stats>(() => {
     const targetId = Number(userId);
     const leaderboard = leaderboardData?.items?.find((x) => x.userId === targetId);
@@ -611,130 +556,124 @@ function KidProfilePage() {
     : null;
 
   return (
-    <TooltipProvider delayDuration={150}>
-      <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6 pb-24">
-        {celebrate && <ConfettiStrip />}
+    <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6 pb-24">
+      {celebrate && <ConfettiStrip />}
 
-        {/* Section 1 — Identity */}
-        <IdentityBlock
-          profile={resolvedProfile}
-          rank={rank}
-          familyName={activeFamilyName}
-          isSelf={isSelf}
-          onEdit={() => setDrawerOpen(true)}
-          onAvatarUpload={(file) => avatarMutation.mutate(file)}
-        />
+      {/* Section 1 — Identity */}
+      <IdentityBlock
+        profile={resolvedProfile}
+        rank={rank}
+        familyName={activeFamilyName}
+        isSelf={isSelf}
+        onEdit={() => setDrawerOpen(true)}
+        onAvatarUpload={(file) => avatarMutation.mutate(file)}
+      />
 
-        {/* Birthday countdown */}
-        {resolvedProfile.birthday && <BirthdayCountdown days={daysLeft!} />}
+      {/* Birthday countdown */}
+      {resolvedProfile.birthday && <BirthdayCountdown days={daysLeft!} />}
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* LEFT column */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Section 4 — XP & Level */}
-            <Card>
-              <SectionHeader
-                icon={<TrendingUp className="size-5" />}
-                title="Level & XP"
-                caption={`Spendable XP balance in ${activeFamilyName}`}
-              />
-              <div className="space-y-4">
-                <div className="flex items-end justify-between gap-3 flex-wrap">
-                  <div>
-                    <div className="font-display font-black text-4xl text-primary-dark">
-                      LVL {stats.level}
-                    </div>
-                    <div className="text-sm font-bold text-muted-foreground">{rank}</div>
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* LEFT column */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Section 4 — XP & Level */}
+          <Card>
+            <SectionHeader
+              icon={<TrendingUp className="size-5" />}
+              title="Level & XP"
+              caption={`Spendable XP balance in ${activeFamilyName}`}
+            />
+            <div className="space-y-4">
+              <div className="flex items-end justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="font-display font-black text-4xl text-primary-dark">
+                    LVL {stats.level}
                   </div>
-                  <div className="text-right">
-                    <div className="font-display font-extrabold tabular-nums">
-                      {stats.xp_balance.toLocaleString()} / {stats.level_up_cost.toLocaleString()}{" "}
-                      XP
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {Math.max(stats.level_up_cost - stats.xp_balance, 0).toLocaleString()} XP
-                      until level up is available
-                    </div>
+                  <div className="text-sm font-bold text-muted-foreground">{rank}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-display font-extrabold tabular-nums">
+                    {stats.xp_balance.toLocaleString()} / {stats.level_up_cost.toLocaleString()} XP
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {Math.max(stats.level_up_cost - stats.xp_balance, 0).toLocaleString()} XP until
+                    level up is available
                   </div>
                 </div>
+              </div>
+              <div
+                role="progressbar"
+                aria-valuenow={Math.min(stats.xp_balance, stats.level_up_cost)}
+                aria-valuemin={0}
+                aria-valuemax={stats.level_up_cost}
+                aria-label="XP Progress"
+                className="relative h-5 rounded-full bg-muted overflow-hidden border-2 border-foreground/5"
+              >
                 <div
-                  role="progressbar"
-                  aria-valuenow={Math.min(stats.xp_balance, stats.level_up_cost)}
-                  aria-valuemin={0}
-                  aria-valuemax={stats.level_up_cost}
-                  aria-label="XP Progress"
-                  className="relative h-5 rounded-full bg-muted overflow-hidden border-2 border-foreground/5"
-                >
-                  <div
-                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-primary-dark rounded-full transition-all"
-                    style={{ width: `${xpPct}%` }}
-                  />
-                </div>
-              </div>
-            </Card>
-
-            {/* Section 5 — Stats */}
-            <Card>
-              <SectionHeader icon={<Sparkles className="size-5" />} title="Stats" />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatTile
-                  icon={<ListChecks className="size-5" />}
-                  label="Quests Completed"
-                  value={stats.total_quests_completed}
-                  accent="bg-success/15 text-success-foreground"
-                />
-                <StatTile
-                  icon={<Video className="size-5" />}
-                  label="Video Quizzes Taken"
-                  value={stats.total_tests_completed}
-                  accent="bg-info/15 text-info"
-                />
-                <StatTile
-                  icon={<Flame className="size-5" />}
-                  label="Current Streak"
-                  value={`${stats.current_streak_days} days`}
-                  accent="bg-warning/15 text-warning-foreground"
-                />
-                <StatTile
-                  icon={<Trophy className="size-5" />}
-                  label="Best Video Quiz Score"
-                  value={stats.best_test_score_pct == null ? "—" : `${stats.best_test_score_pct}%`}
-                  accent="bg-purple/15 text-purple"
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-primary-dark rounded-full transition-all"
+                  style={{ width: `${xpPct}%` }}
                 />
               </div>
-            </Card>
+            </div>
+          </Card>
 
-            {/* Section 2 — Bio */}
-            <BioSection profile={resolvedProfile} isSelf={isSelf} />
+          {/* Section 5 — Stats */}
+          <Card>
+            <SectionHeader icon={<Sparkles className="size-5" />} title="Stats" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <StatTile
+                icon={<ListChecks className="size-5" />}
+                label="Quests Completed"
+                value={stats.total_quests_completed}
+                accent="bg-success/15 text-success-foreground"
+              />
+              <StatTile
+                icon={<Video className="size-5" />}
+                label="Video Quizzes Taken"
+                value={stats.total_tests_completed}
+                accent="bg-info/15 text-info"
+              />
+              <StatTile
+                icon={<Flame className="size-5" />}
+                label="Current Streak"
+                value={`${stats.current_streak_days} days`}
+                accent="bg-warning/15 text-warning-foreground"
+              />
+              <StatTile
+                icon={<Trophy className="size-5" />}
+                label="Best Video Quiz Score"
+                value={stats.best_test_score_pct == null ? "—" : `${stats.best_test_score_pct}%`}
+                accent="bg-purple/15 text-purple"
+              />
+            </div>
+          </Card>
 
-            {/* Section 7 — Quest & Video Quiz Summary */}
-            <QuestTestSummary stats={stats} />
+          {/* Section 2 — Bio */}
+          <BioSection profile={resolvedProfile} isSelf={isSelf} />
 
-            {/* Section 6 — Medals */}
-            <MedalShowcase earned={earned} locked={locked} />
-          </div>
-
-          {/* RIGHT column */}
-          <div className="space-y-6">
-            {/* Section 3 — Personal Info */}
-            <PersonalInfoSection profile={resolvedProfile} age={age} isSelf={isSelf} />
-
-            {/* Section 8 — Activity */}
-            <ActivityFeed events={activity} />
-          </div>
+          {/* Section 7 — Quest & Video Quiz Summary */}
+          <QuestTestSummary stats={stats} />
         </div>
 
-        {/* Edit drawer */}
-        {isSelf && (
-          <EditProfileDrawer
-            open={drawerOpen}
-            onOpenChange={setDrawerOpen}
-            profile={resolvedProfile}
-            userId={String(userId)}
-          />
-        )}
+        {/* RIGHT column */}
+        <div className="space-y-6">
+          {/* Section 3 — Personal Info */}
+          <PersonalInfoSection profile={resolvedProfile} age={age} isSelf={isSelf} />
+
+          {/* Section 8 — Activity */}
+          <ActivityFeed events={activity} />
+        </div>
       </div>
-    </TooltipProvider>
+
+      {/* Edit drawer */}
+      {isSelf && (
+        <EditProfileDrawer
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          profile={resolvedProfile}
+          userId={String(userId)}
+        />
+      )}
+    </div>
   );
 }
 
@@ -1022,73 +961,6 @@ function PersonalInfoSection({
           Use Edit profile to update this section.
         </div>
       )}
-    </Card>
-  );
-}
-
-function MedalShowcase({ earned, locked }: { earned: Achievement[]; locked: Achievement[] }) {
-  return (
-    <Card>
-      <SectionHeader
-        icon={<Trophy className="size-5" />}
-        title="Medals & Achievements"
-        caption={`${earned.length} earned`}
-      />
-      {earned.length === 0 && (
-        <div className="text-sm text-muted-foreground text-center py-6">
-          Complete quests and video quizzes to earn your first medal!
-        </div>
-      )}
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-        {earned.map((a) => (
-          <Tooltip key={a.id}>
-            <TooltipTrigger asChild>
-              <button
-                tabIndex={0}
-                className="group rounded-2xl border-2 border-foreground/10 bg-secondary/40 p-3 flex flex-col items-center gap-1 hover:-translate-y-0.5 transition shadow-pop-sm"
-                style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}
-              >
-                <span className="text-3xl">{a.icon}</span>
-                <div className="text-xs font-extrabold text-center line-clamp-1">{a.name}</div>
-                <span
-                  className={cn(
-                    "text-[10px] font-black uppercase px-1.5 rounded border",
-                    tierStyles(a.tier),
-                  )}
-                >
-                  {a.tier}
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <div className="font-bold">{a.description}</div>
-              {a.earned_at && (
-                <div className="text-xs opacity-80">
-                  Earned {format(new Date(a.earned_at), "MMM d, yyyy")}
-                </div>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        ))}
-        {locked.map((a) => (
-          <Tooltip key={a.id}>
-            <TooltipTrigger asChild>
-              <button
-                tabIndex={0}
-                aria-label="Locked achievement"
-                className="rounded-2xl border-2 border-dashed border-foreground/15 bg-muted/40 p-3 flex flex-col items-center gap-1 opacity-60 hover:opacity-80 transition"
-              >
-                <Lock className="size-7 text-muted-foreground" />
-                <div className="text-xs font-extrabold text-center">???</div>
-                <span className="text-[10px] font-black uppercase px-1.5 rounded border bg-muted text-muted-foreground border-muted-foreground/30">
-                  {a.tier}
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Keep completing quests to unlock more medals!</TooltipContent>
-          </Tooltip>
-        ))}
-      </div>
     </Card>
   );
 }

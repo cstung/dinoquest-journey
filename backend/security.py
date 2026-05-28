@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Any
 
 from jose import JWTError, jwt
@@ -8,21 +9,24 @@ from passlib.context import CryptContext
 
 from backend.config import get_settings
 
-pwd_context = CryptContext(
-    schemes=["argon2"],
-    deprecated="auto",
-    argon2__memory_cost=102400,
-    argon2__parallelism=8,
-    argon2__rounds=4,
-)
+@lru_cache(maxsize=1)
+def _pwd_context() -> CryptContext:
+    settings = get_settings()
+    return CryptContext(
+        schemes=["argon2"],
+        deprecated="auto",
+        argon2__memory_cost=settings.argon2_memory_cost,
+        argon2__parallelism=settings.argon2_parallelism,
+        argon2__rounds=settings.argon2_rounds,
+    )
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return _pwd_context().hash(password)
 
 
 def verify_password(password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(password, hashed_password)
+    return _pwd_context().verify(password, hashed_password)
 
 
 def _create_token(subject: str, expires_delta: timedelta, token_type: str) -> str:

@@ -109,7 +109,28 @@ async def _assignment_status_for_test(
     role: str,
     db: AsyncSession,
 ) -> tuple[str, list[TestAssignedMemberOut], int]:
-    rows = await db.execute(
+    status_by_test = await _assignment_status_for_tests(
+        test_ids=[test_id],
+        family_id=family_id,
+        current_user_id=current_user_id,
+        role=role,
+        db=db,
+    )
+    return status_by_test.get(test_id, ("published", [], 0))
+
+
+async def _assignment_status_for_tests(
+    *,
+    test_ids: list[int],
+    family_id: int,
+    current_user_id: int | None,
+    role: str,
+    db: AsyncSession,
+) -> dict[int, tuple[str, list[TestAssignedMemberOut], int]]:
+    if not test_ids:
+        return {}
+
+    assignment_rows = await db.execute(
         select(TestAssignment, User, FamilyMember.avatar_color)
         .join(User, User.id == TestAssignment.user_id)
         .outerjoin(
@@ -119,44 +140,68 @@ async def _assignment_status_for_test(
                 FamilyMember.user_id == TestAssignment.user_id,
             ),
         )
-        .where(TestAssignment.test_id == test_id, TestAssignment.family_id == family_id)
-        .order_by(TestAssignment.id.asc())
-    )
-    assignments = rows.all()
-    member_out = [
-        TestAssignedMemberOut(
-            user_id=assignment.user_id,
-            username=user.username,
-            avatar_color=avatar_color,
-            status=assignment.status,
-            completed_at=assignment.completed_at,
+        .where(
+            TestAssignment.family_id == family_id,
+            TestAssignment.test_id.in_(test_ids),
         )
-        for assignment, user, avatar_color in assignments
-    ]
-
-    request_rows = await db.execute(
-        select(TestReopenRequest.status)
-        .join(TestAttempt, TestAttempt.id == TestReopenRequest.attempt_id)
-        .join(TestAssignment, TestAssignment.id == TestAttempt.assignment_id)
-        .where(TestAssignment.test_id == test_id, TestReopenRequest.status == "pending")
+        .order_by(TestAssignment.test_id.asc(), TestAssignment.id.asc())
     )
-    reopen_pending_count = len(request_rows.all())
 
-    if role == "child":
-        assignment = next((a for a, _, _ in assignments if a.user_id == current_user_id), None)
-        if assignment is None:
-            return "published", member_out, reopen_pending_count
-        if reopen_pending_count > 0 and assignment.status == "completed":
-            return "reopen_requested", member_out, reopen_pending_count
-        if assignment.status == "completed":
-            return "completed", member_out, reopen_pending_count
-        return "published", member_out, reopen_pending_count
+    assignments_by_test: dict[int, list[TestAssignment]] = {test_id: [] for test_id in test_ids}
+    members_by_test: dict[int, list[TestAssignedMemberOut]] = {test_id: [] for test_id in test_ids}
+    for assignment, user, avatar_color in assignment_rows.all():
+        assignments_by_test.setdefault(assignment.test_id, []).append(assignment)
+        members_by_test.setdefault(assignment.test_id, []).append(
+            TestAssignedMemberOut(
+                user_id=assignment.user_id,
+                username=user.username,
+                avatar_color=avatar_color,
+                status=assignment.status,
+                completed_at=assignment.completed_at,
+            )
+        )
 
-    if reopen_pending_count > 0:
-        return "reopen_requested", member_out, reopen_pending_count
-    if assignments and all(assignment.status == "completed" for assignment, _, _ in assignments):
-        return "completed", member_out, reopen_pending_count
-    return "published", member_out, reopen_pending_count
+    reopen_rows = await db.execute(
+        select(TestAssignment.test_id, func.count(TestReopenRequest.id))
+        .join(TestAttempt, TestAttempt.assignment_id == TestAssignment.id)
+        .join(TestReopenRequest, TestReopenRequest.attempt_id == TestAttempt.id)
+        .where(
+            TestAssignment.test_id.in_(test_ids),
+            TestAssignment.family_id == family_id,
+            TestReopenRequest.status == "pending",
+        )
+        .group_by(TestAssignment.test_id)
+    )
+    reopen_count_by_test = {test_id: int(count) for test_id, count in reopen_rows.all()}
+
+    status_by_test: dict[int, tuple[str, list[TestAssignedMemberOut], int]] = {}
+    for test_id in test_ids:
+        assignments = assignments_by_test.get(test_id, [])
+        members = members_by_test.get(test_id, [])
+        reopen_pending_count = reopen_count_by_test.get(test_id, 0)
+
+        if role == "child":
+            assignment = next((item for item in assignments if item.user_id == current_user_id), None)
+            if assignment is None:
+                status = "published"
+            elif reopen_pending_count > 0 and assignment.status == "completed":
+                status = "reopen_requested"
+            elif assignment.status == "completed":
+                status = "completed"
+            else:
+                status = "published"
+            status_by_test[test_id] = (status, members, reopen_pending_count)
+            continue
+
+        if reopen_pending_count > 0:
+            status = "reopen_requested"
+        elif assignments and all(assignment.status == "completed" for assignment in assignments):
+            status = "completed"
+        else:
+            status = "published"
+        status_by_test[test_id] = (status, members, reopen_pending_count)
+
+    return status_by_test
 
 
 async def _list_item(
@@ -427,9 +472,33 @@ async def list_tests(
     has_more = len(all_tests) > limit
     page_tests = all_tests[:limit]
 
+    status_by_test = await _assignment_status_for_tests(
+        test_ids=[test.id for test in page_tests],
+        family_id=membership.family_id,
+        current_user_id=membership.user_id,
+        role=membership.role,
+        db=db,
+    )
+
     items: list[TestListItemOut] = []
     for test in page_tests:
-        item = await _list_item(test, membership, db)
+        status_value, members, reopen_pending_count = status_by_test.get(test.id, ("published", [], 0))
+        item = TestListItemOut(
+            id=test.id,
+            title=test.title,
+            video_id=test.video_id,
+            thumbnail_url=test.thumbnail_url,
+            question_count=test.question_count,
+            time_limit_min=max(test.time_limit_sec // 60, 1),
+            max_xp=test.max_xp,
+            status=status_value,
+            availability_status=_availability_status(test.status),
+            difficulty=(test.difficulty or "medium").strip().lower(),
+            subtitle_source=test.subtitle_source,
+            assigned_members=members,
+            reopen_pending_count=reopen_pending_count,
+            created_at=test.created_at,
+        )
         if status_filter and status_filter != "all":
             if status_filter in {"published", "open"}:
                 if item.status not in {"published", "reopen_requested"}:

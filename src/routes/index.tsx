@@ -149,7 +149,7 @@ function HomePage() {
   const leaderboardQuery = useLeaderboard(activeFamilyId, "family");
   const questsQuery = useQuests(activeFamilyId, { status: "pending" });
   const testsQuery = useTests(activeFamilyId, { status: "all" });
-  const activityQuery = useFamilyActivity(activeFamilyId, "activity", !!activeFamilyId, 100);
+  const activityQuery = useFamilyActivity(activeFamilyId, "activity", !!activeFamilyId, 30);
   const petsQuery = usePets(activeFamilyId);
   const levelUpMutation = useLevelUp(activeFamilyId);
   const [levelUpConfirmOpen, setLevelUpConfirmOpen] = useState(false);

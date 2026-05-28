@@ -25,11 +25,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_days: int = 7
     ws_token_expire_minutes: int = 60
+    argon2_memory_cost: int = 65536
+    argon2_parallelism: int = 2
+    argon2_rounds: int = 3
 
     allowed_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"]
+        default_factory=lambda: ["http://localhost:5007", "http://localhost:3000", "http://localhost:5173"]
     )
-    app_base_url: str = "http://localhost:3000"
+    app_base_url: str = "http://localhost:5007"
     cookie_domain: str = ""
     tz: str = "Asia/Ho_Chi_Minh"
     db_path: str = "./data/dinoquest.db"
