@@ -36,5 +36,6 @@ services:
     environment:
       VITE_DEV_API_PROXY_TARGET: http://api:8122
       VITE_DEV_WS_PROXY_TARGET: ws://api:8122
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-questv3.diinooo.blog}
     ports:
       - "5007:5007"
