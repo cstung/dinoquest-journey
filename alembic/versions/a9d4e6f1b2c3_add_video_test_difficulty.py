@@ -21,6 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     bind = op.get_bind()
+    dialect = bind.dialect.name
     inspector = inspect(bind)
     columns = {col["name"] for col in inspector.get_columns("video_tests")}
     if "difficulty" not in columns:
@@ -29,7 +30,8 @@ def upgrade() -> None:
             sa.Column("difficulty", sa.String(length=20), nullable=False, server_default="medium"),
         )
         op.execute("UPDATE video_tests SET difficulty = 'medium' WHERE difficulty IS NULL")
-        op.alter_column("video_tests", "difficulty", server_default=None)
+        if dialect != "sqlite":
+            op.alter_column("video_tests", "difficulty", server_default=None)
 
 
 def downgrade() -> None:
