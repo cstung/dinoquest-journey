@@ -56,8 +56,12 @@ function NewTestWizard() {
     return <div className="py-10 text-sm text-muted-foreground">Select a family first.</div>;
   }
 
-  if (role !== "parent") {
-    return <div className="py-10 text-sm text-destructive">Only parents can create video quizzes.</div>;
+  if (role !== "parent" && role !== "superadmin") {
+    return (
+      <div className="py-10 text-sm text-destructive">
+        Only parents or superadmins can create video quizzes.
+      </div>
+    );
   }
 
   return (

@@ -148,6 +148,39 @@ export interface TestReopenResolveResult {
   level: number;
 }
 
+export interface TestEditPayload {
+  id: number;
+  title: string;
+  questionCount: number;
+  timeLimitMin: number;
+  maxXp: number;
+  difficulty: TestDifficulty;
+  subtitleSource: TestSubtitleSource;
+  assignedUserIds: number[];
+  questions: TestQuestionDraft[];
+  hasSubmittedAttempts: boolean;
+}
+
+export interface TestAnalyticsSummary {
+  totalAttempts: number;
+  averageAccuracyPct: number;
+  averageMinutesPerQuestion: number;
+  totalXpEarned: number;
+}
+
+export interface TestAnalyticsPoint {
+  date: string;
+  attempts: number;
+  averageAccuracyPct: number;
+  averageMinutesPerQuestion: number;
+  xpEarned: number;
+}
+
+export interface TestAnalytics {
+  summary: TestAnalyticsSummary;
+  points: TestAnalyticsPoint[];
+}
+
 export function useTests(
   familyId: number | null,
   options?: {
@@ -273,6 +306,61 @@ export function useDeleteTest(familyId: number | null, testId: number | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tests", familyId] });
     },
+  });
+}
+
+export function useTestForEdit(
+  familyId: number | null,
+  testId: number | null,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["test-edit", familyId, testId],
+    queryFn: () => apiRequest<TestEditPayload>(`/api/families/${familyId}/tests/${testId}/edit`),
+    enabled: !!familyId && !!testId && enabled,
+  });
+}
+
+export function useUpdateTest(familyId: number | null, testId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      title: string;
+      questionCount: number;
+      difficulty: TestDifficulty;
+      timeLimitMin: number;
+      maxXp: number;
+      assignedUserIds: number[];
+      questions: TestQuestionDraft[];
+    }) =>
+      apiRequest<TestListItem>(`/api/families/${familyId}/tests/${testId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tests", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["test-edit", familyId, testId] });
+      queryClient.invalidateQueries({ queryKey: ["test-analytics", familyId] });
+    },
+  });
+}
+
+export function useTestAnalytics(
+  familyId: number | null,
+  options?: { from?: string; to?: string; enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: ["test-analytics", familyId, options?.from ?? "", options?.to ?? ""],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (options?.from) params.set("from", options.from);
+      if (options?.to) params.set("to", options.to);
+      const qs = params.toString();
+      return apiRequest<TestAnalytics>(
+        `/api/families/${familyId}/tests/analytics${qs ? `?${qs}` : ""}`,
+      );
+    },
+    enabled: !!familyId && (options?.enabled ?? true),
   });
 }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
@@ -25,8 +26,21 @@ def _register_with_invite(client: TestClient, username: str, email: str, invite_
 
 def _setup_family_with_child(client: TestClient) -> tuple[int, int, TestClient]:
     idx = next(_seq)
-    parent = _register(client, f"parent_test_{idx}", f"parent_test_{idx}@example.com")
-    assert parent["globalRole"] == "superadmin"
+    register_resp = client.post(
+        "/api/auth/register",
+        json={
+            "username": f"parent_test_{idx}",
+            "password": "Password12345!",
+            "email": f"parent_test_{idx}@example.com",
+        },
+    )
+    if register_resp.status_code == 201:
+        parent = register_resp.json()
+        assert parent["globalRole"] == "superadmin"
+    else:
+        # Test session may already be authenticated as a parent from a prior setup in this fixture scope.
+        assert register_resp.status_code in {400, 422}, register_resp.text
+
     family = client.post("/api/families", json={"name": "Test Family", "motto": "QA"})
     assert family.status_code == 201, family.text
     family_id = family.json()["id"]
@@ -43,6 +57,29 @@ def _setup_family_with_child(client: TestClient) -> tuple[int, int, TestClient]:
     )
     child_user_id = next(m["userId"] for m in child_user_id if m["role"] == "child")
     return family_id, child_user_id, child_client
+
+
+def _sample_questions() -> list[dict]:
+    return [
+        {
+            "questionText": "What did T-Rex mainly eat?",
+            "options": ["Plants", "Meat", "Rocks", "Fish food"],
+            "correctOption": 1,
+            "explanation": None,
+        },
+        {
+            "questionText": "What helps scientists learn about dinosaurs?",
+            "options": ["Fossils", "Clouds", "Rain", "Books only"],
+            "correctOption": 0,
+            "explanation": None,
+        },
+        {
+            "questionText": "Who studies dinosaur bones?",
+            "options": ["Pilots", "Paleontologists", "Chefs", "Artists"],
+            "correctOption": 1,
+            "explanation": None,
+        },
+    ]
 
 
 def test_auth_invite_join_flow(client: TestClient) -> None:
@@ -289,3 +326,183 @@ def test_preview_subtitle_returns_503_with_network_policy_notice(
     detail = response.json()["detail"]
     assert detail["code"] == "network_policy_blocked"
     assert "network policy" in detail["msg"].lower()
+
+
+def test_superadmin_can_manage_tests_and_max_xp_has_no_cap(client: TestClient) -> None:
+    family_id, child_user_id, _ = _setup_family_with_child(client)
+    questions = _sample_questions()
+    created = client.post(
+        f"/api/families/{family_id}/tests",
+        json={
+            "title": "High XP Quiz",
+            "youtubeUrl": "https://www.youtube.com/watch?v=ZCkn3l_RtgU",
+            "videoId": "ZCkn3l_RtgU",
+            "thumbnailUrl": "https://img.youtube.com/vi/ZCkn3l_RtgU/hqdefault.jpg",
+            "subtitleSource": "youtube_manual",
+            "rawTranscript": "Dino transcript",
+            "questionCount": len(questions),
+            "difficulty": "medium",
+            "timeLimitMin": 20,
+            "maxXp": 250000,
+            "assignedUserIds": [child_user_id],
+            "questions": questions,
+        },
+    )
+    assert created.status_code == 201, created.text
+    test_id = created.json()["id"]
+    assert created.json()["maxXp"] == 250000
+
+    deactivated = client.patch(
+        f"/api/families/{family_id}/tests/{test_id}/availability",
+        json={"isActive": False},
+    )
+    assert deactivated.status_code == 200, deactivated.text
+    assert deactivated.json()["availabilityStatus"] == "inactive"
+
+    reactivated = client.patch(
+        f"/api/families/{family_id}/tests/{test_id}/availability",
+        json={"isActive": True},
+    )
+    assert reactivated.status_code == 200, reactivated.text
+    assert reactivated.json()["availabilityStatus"] == "active"
+
+    edit_state = client.get(f"/api/families/{family_id}/tests/{test_id}/edit")
+    assert edit_state.status_code == 200, edit_state.text
+    updated = client.patch(
+        f"/api/families/{family_id}/tests/{test_id}",
+        json={
+            "title": "High XP Quiz Updated",
+            "questionCount": len(questions),
+            "difficulty": "hard",
+            "timeLimitMin": 25,
+            "maxXp": 500000,
+            "assignedUserIds": [child_user_id],
+            "questions": edit_state.json()["questions"],
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["title"] == "High XP Quiz Updated"
+    assert updated.json()["maxXp"] == 500000
+
+    deleted = client.delete(f"/api/families/{family_id}/tests/{test_id}")
+    assert deleted.status_code == 204, deleted.text
+
+    listed = client.get(f"/api/families/{family_id}/tests")
+    assert listed.status_code == 200, listed.text
+    assert all(item["id"] != test_id for item in listed.json()["items"])
+
+
+def test_update_blocks_question_changes_after_submission_but_allows_metadata(client: TestClient) -> None:
+    family_id, child_user_id, child_client = _setup_family_with_child(client)
+    questions = _sample_questions()
+    created = client.post(
+        f"/api/families/{family_id}/tests",
+        json={
+            "title": "Lock Questions Quiz",
+            "youtubeUrl": "https://www.youtube.com/watch?v=ZCkn3l_RtgU",
+            "videoId": "ZCkn3l_RtgU",
+            "thumbnailUrl": "https://img.youtube.com/vi/ZCkn3l_RtgU/hqdefault.jpg",
+            "subtitleSource": "youtube_manual",
+            "rawTranscript": "Dino transcript",
+            "questionCount": len(questions),
+            "difficulty": "medium",
+            "timeLimitMin": 20,
+            "maxXp": 100,
+            "assignedUserIds": [child_user_id],
+            "questions": questions,
+        },
+    )
+    assert created.status_code == 201, created.text
+    test_id = created.json()["id"]
+
+    started = child_client.post(f"/api/families/{family_id}/tests/{test_id}/start")
+    assert started.status_code == 200, started.text
+    submitted = child_client.post(
+        f"/api/families/{family_id}/tests/{test_id}/submit",
+        json={
+            "attemptId": started.json()["attemptId"],
+            "answers": [{"questionId": q["id"], "selectedOption": 0} for q in started.json()["questions"]],
+        },
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    edit_state = client.get(f"/api/families/{family_id}/tests/{test_id}/edit")
+    assert edit_state.status_code == 200, edit_state.text
+    locked_questions = edit_state.json()["questions"]
+    locked_questions[0]["questionText"] = "Changed question text"
+
+    blocked = client.patch(
+        f"/api/families/{family_id}/tests/{test_id}",
+        json={
+            "title": "Lock Questions Quiz",
+            "questionCount": len(locked_questions),
+            "difficulty": "medium",
+            "timeLimitMin": 20,
+            "maxXp": 100,
+            "assignedUserIds": [child_user_id],
+            "questions": locked_questions,
+        },
+    )
+    assert blocked.status_code == 400, blocked.text
+    assert "Cannot edit questions" in blocked.json()["detail"]
+
+    metadata_only = client.patch(
+        f"/api/families/{family_id}/tests/{test_id}",
+        json={
+            "title": "Lock Questions Quiz Metadata Updated",
+            "questionCount": edit_state.json()["questionCount"],
+            "difficulty": edit_state.json()["difficulty"],
+            "timeLimitMin": 30,
+            "maxXp": 9999,
+            "assignedUserIds": [child_user_id],
+            "questions": edit_state.json()["questions"],
+        },
+    )
+    assert metadata_only.status_code == 200, metadata_only.text
+    assert metadata_only.json()["title"] == "Lock Questions Quiz Metadata Updated"
+    assert metadata_only.json()["maxXp"] == 9999
+
+
+def test_quiz_analytics_endpoint_returns_daily_metrics(client: TestClient) -> None:
+    family_id, child_user_id, child_client = _setup_family_with_child(client)
+    questions = _sample_questions()
+    created = client.post(
+        f"/api/families/{family_id}/tests",
+        json={
+            "title": "Analytics Quiz",
+            "youtubeUrl": "https://www.youtube.com/watch?v=ZCkn3l_RtgU",
+            "videoId": "ZCkn3l_RtgU",
+            "thumbnailUrl": "https://img.youtube.com/vi/ZCkn3l_RtgU/hqdefault.jpg",
+            "subtitleSource": "youtube_manual",
+            "rawTranscript": "Dino transcript",
+            "questionCount": len(questions),
+            "difficulty": "medium",
+            "timeLimitMin": 20,
+            "maxXp": 120,
+            "assignedUserIds": [child_user_id],
+            "questions": questions,
+        },
+    )
+    assert created.status_code == 201, created.text
+    test_id = created.json()["id"]
+
+    started = child_client.post(f"/api/families/{family_id}/tests/{test_id}/start")
+    assert started.status_code == 200, started.text
+    submitted = child_client.post(
+        f"/api/families/{family_id}/tests/{test_id}/submit",
+        json={
+            "attemptId": started.json()["attemptId"],
+            "answers": [{"questionId": q["id"], "selectedOption": 0} for q in started.json()["questions"]],
+        },
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    analytics = client.get(f"/api/families/{family_id}/tests/analytics?from={today}&to={today}")
+    assert analytics.status_code == 200, analytics.text
+    payload = analytics.json()
+    assert payload["summary"]["totalAttempts"] >= 1
+    assert payload["summary"]["totalXpEarned"] >= 0
+    assert len(payload["points"]) == 1
+    assert payload["points"][0]["date"] == today
+    assert payload["points"][0]["attempts"] >= 1

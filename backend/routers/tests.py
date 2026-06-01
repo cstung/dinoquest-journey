@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import and_, func, select
@@ -22,7 +22,11 @@ from backend.models import (
 )
 from backend.realtime import emit_family_event
 from backend.schemas.video_test import (
+    TestAnalyticsOut,
+    TestAnalyticsPointOut,
+    TestAnalyticsSummaryOut,
     TestAvailabilityUpdateIn,
+    TestEditOut,
     TestGenerateQuestionsOut,
     TestGenerateQuestionsRequest,
     TestAttemptReviewOut,
@@ -45,6 +49,7 @@ from backend.schemas.video_test import (
     TestReopenResolveOut,
     TestSubmitOut,
     TestSubmitRequest,
+    TestUpdateRequest,
 )
 from backend.services.quiz_generator import (
     generate_quiz_questions,
@@ -99,6 +104,29 @@ def _availability_status(value: str) -> str:
     if lowered in {"deleted", "archived"}:
         return "deleted"
     return "active"
+
+
+def _question_to_draft(question: TestQuestion) -> TestQuestionDraft:
+    return TestQuestionDraft(
+        question_text=question.question_text,
+        options=[question.option_a, question.option_b, question.option_c, question.option_d],
+        correct_option=_option_index(question.correct_option),
+        explanation=question.explanation,
+    )
+
+
+def _question_signature(questions: list[TestQuestionDraft]) -> list[tuple[str, tuple[str, str, str, str], int, str]]:
+    signature: list[tuple[str, tuple[str, str, str, str], int, str]] = []
+    for question in questions:
+        signature.append(
+            (
+                question.question_text.strip(),
+                tuple(option.strip() for option in question.options),  # type: ignore[arg-type]
+                question.correct_option,
+                (question.explanation or "").strip(),
+            )
+        )
+    return signature
 
 
 async def _assignment_status_for_test(
@@ -265,6 +293,20 @@ async def _validate_test_access(
             raise HTTPException(status_code=403, detail="Test not assigned to you")
 
     return test
+
+
+async def _has_submitted_attempts(*, family_id: int, test_id: int, db: AsyncSession) -> bool:
+    row = await db.execute(
+        select(func.count(TestAttempt.id))
+        .select_from(TestAttempt)
+        .join(TestAssignment, TestAssignment.id == TestAttempt.assignment_id)
+        .where(
+            TestAssignment.family_id == family_id,
+            TestAssignment.test_id == test_id,
+            TestAttempt.submitted_at.is_not(None),
+        )
+    )
+    return int(row.scalar_one() or 0) > 0
 
 
 @router.post("/{family_id}/tests/preview", response_model=TestPreviewOut)
@@ -779,6 +821,271 @@ async def delete_test(
         {"testId": test.id, "availabilityStatus": "deleted"},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{family_id}/tests/{test_id}/edit", response_model=TestEditOut)
+async def get_test_for_edit(
+    test_id: int,
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> TestEditOut:
+    test = await _validate_test_access(test_id=test_id, membership=parent_member, db=db)
+    question_rows = await db.execute(
+        select(TestQuestion)
+        .where(TestQuestion.test_id == test.id)
+        .order_by(TestQuestion.question_order.asc(), TestQuestion.id.asc())
+    )
+    assignment_rows = await db.execute(
+        select(TestAssignment.user_id).where(
+            TestAssignment.test_id == test.id,
+            TestAssignment.family_id == parent_member.family_id,
+        )
+    )
+    has_submitted_attempts = await _has_submitted_attempts(
+        family_id=parent_member.family_id,
+        test_id=test.id,
+        db=db,
+    )
+
+    return TestEditOut(
+        id=test.id,
+        title=test.title,
+        question_count=test.question_count,
+        time_limit_min=max(test.time_limit_sec // 60, 1),
+        max_xp=test.max_xp,
+        difficulty=(test.difficulty or "medium").strip().lower(),
+        subtitle_source=test.subtitle_source,
+        assigned_user_ids=[int(user_id) for user_id in assignment_rows.scalars().all()],
+        questions=[_question_to_draft(question) for question in question_rows.scalars().all()],
+        has_submitted_attempts=has_submitted_attempts,
+    )
+
+
+@router.patch("/{family_id}/tests/{test_id}", response_model=TestListItemOut)
+async def update_test(
+    test_id: int,
+    body: TestUpdateRequest,
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> TestListItemOut:
+    test = await _validate_test_access(test_id=test_id, membership=parent_member, db=db)
+
+    child_rows = await db.execute(
+        select(FamilyMember).where(
+            FamilyMember.family_id == parent_member.family_id,
+            FamilyMember.role == "child",
+        )
+    )
+    children = {member.user_id: member for member in child_rows.scalars().all()}
+    requested_ids = list(dict.fromkeys(body.assigned_user_ids))
+    if not requested_ids:
+        raise HTTPException(status_code=400, detail="At least one child must be assigned")
+    invalid_ids = [user_id for user_id in requested_ids if user_id not in children]
+    if invalid_ids:
+        raise HTTPException(status_code=400, detail="One or more assigned users are invalid")
+
+    question_rows = await db.execute(
+        select(TestQuestion)
+        .where(TestQuestion.test_id == test.id)
+        .order_by(TestQuestion.question_order.asc(), TestQuestion.id.asc())
+    )
+    current_questions = question_rows.scalars().all()
+    current_signature = _question_signature([_question_to_draft(question) for question in current_questions])
+    next_signature = _question_signature(body.questions)
+    has_submitted_attempts = await _has_submitted_attempts(
+        family_id=parent_member.family_id,
+        test_id=test.id,
+        db=db,
+    )
+
+    if has_submitted_attempts and current_signature != next_signature:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot edit questions after attempts have been submitted. "
+                "You can still update metadata and assignments."
+            ),
+        )
+
+    test.title = body.title
+    test.time_limit_sec = body.time_limit_min * 60
+    test.max_xp = body.max_xp
+    test.difficulty = body.difficulty
+    test.question_count = body.question_count
+
+    if not has_submitted_attempts and current_signature != next_signature:
+        for question in current_questions:
+            await db.delete(question)
+        await db.flush()
+        for order, question in enumerate(body.questions, start=1):
+            db.add(
+                TestQuestion(
+                    test_id=test.id,
+                    question_order=order,
+                    question_text=question.question_text,
+                    option_a=question.options[0],
+                    option_b=question.options[1],
+                    option_c=question.options[2],
+                    option_d=question.options[3],
+                    correct_option=_option_label(question.correct_option),
+                    explanation=question.explanation,
+                )
+            )
+
+    assignment_rows = await db.execute(
+        select(TestAssignment).where(
+            TestAssignment.test_id == test.id,
+            TestAssignment.family_id == parent_member.family_id,
+        )
+    )
+    assignments = assignment_rows.scalars().all()
+    assignments_by_user = {assignment.user_id: assignment for assignment in assignments}
+    requested_set = set(requested_ids)
+
+    for assignment in assignments:
+        if assignment.user_id in requested_set:
+            continue
+        attempt_exists_row = await db.execute(
+            select(TestAttempt.id).where(TestAttempt.assignment_id == assignment.id).limit(1)
+        )
+        if attempt_exists_row.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot unassign a child who already has quiz attempts.",
+            )
+        await db.delete(assignment)
+
+    for user_id in requested_ids:
+        if user_id in assignments_by_user:
+            continue
+        db.add(
+            TestAssignment(
+                test_id=test.id,
+                family_id=parent_member.family_id,
+                user_id=user_id,
+                status="pending",
+            )
+        )
+
+    db.add(
+        ActivityLog(
+            family_id=parent_member.family_id,
+            user_id=parent_member.user_id,
+            event_type="test_updated",
+            payload={"test_id": test.id, "title": test.title},
+            is_audit=True,
+        )
+    )
+    await db.commit()
+    await db.refresh(test)
+    await emit_family_event(
+        parent_member.family_id,
+        "test_updated",
+        {"testId": test.id, "availabilityStatus": _availability_status(test.status)},
+    )
+    return await _list_item(test, parent_member, db)
+
+
+@router.get("/{family_id}/tests/analytics", response_model=TestAnalyticsOut)
+async def get_test_analytics(
+    parent_member: FamilyMember = Depends(require_parent),
+    from_date: date | None = Query(default=None, alias="from"),
+    to_date: date | None = Query(default=None, alias="to"),
+    db: AsyncSession = Depends(get_db),
+) -> TestAnalyticsOut:
+    today = datetime.now(timezone.utc).date()
+    start_date = from_date or (today - timedelta(days=29))
+    end_date = to_date or today
+    if start_date > end_date:
+        raise HTTPException(status_code=400, detail="'from' date must be <= 'to' date")
+
+    start_dt = datetime.combine(start_date, time.min, tzinfo=timezone.utc)
+    end_exclusive = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=timezone.utc)
+
+    rows = await db.execute(
+        select(
+            TestAttempt.submitted_at,
+            TestAttempt.started_at,
+            TestAttempt.score_pct,
+            TestAttempt.xp_earned,
+            VideoTest.question_count,
+        )
+        .join(TestAssignment, TestAssignment.id == TestAttempt.assignment_id)
+        .join(VideoTest, VideoTest.id == TestAssignment.test_id)
+        .where(
+            TestAssignment.family_id == parent_member.family_id,
+            TestAttempt.submitted_at.is_not(None),
+            TestAttempt.submitted_at >= start_dt,
+            TestAttempt.submitted_at < end_exclusive,
+        )
+    )
+
+    daily: dict[str, dict[str, float]] = {}
+    total_attempts = 0
+    total_score = 0.0
+    total_minutes_per_question = 0.0
+    total_xp = 0
+
+    for submitted_at, started_at, score_pct, xp_earned, question_count in rows.all():
+        if submitted_at is None:
+            continue
+        day_key = submitted_at.astimezone(timezone.utc).date().isoformat()
+        daily.setdefault(
+            day_key,
+            {"attempts": 0.0, "score_total": 0.0, "minutes_per_question_total": 0.0, "xp_total": 0.0},
+        )
+
+        duration_min = 0.0
+        if started_at is not None and submitted_at >= started_at:
+            duration_min = (submitted_at - started_at).total_seconds() / 60.0
+        minutes_per_question = duration_min / max(int(question_count or 0), 1)
+        score = float(score_pct or 0.0)
+        xp = int(xp_earned or 0)
+
+        daily[day_key]["attempts"] += 1
+        daily[day_key]["score_total"] += score
+        daily[day_key]["minutes_per_question_total"] += minutes_per_question
+        daily[day_key]["xp_total"] += xp
+
+        total_attempts += 1
+        total_score += score
+        total_minutes_per_question += minutes_per_question
+        total_xp += xp
+
+    points: list[TestAnalyticsPointOut] = []
+    cursor_date = start_date
+    while cursor_date <= end_date:
+        day_key = cursor_date.isoformat()
+        metrics = daily.get(day_key)
+        attempts = int(metrics["attempts"]) if metrics else 0
+        avg_score = (metrics["score_total"] / attempts) if metrics and attempts > 0 else 0.0
+        avg_minutes = (
+            metrics["minutes_per_question_total"] / attempts
+            if metrics and attempts > 0
+            else 0.0
+        )
+        xp_total = int(metrics["xp_total"]) if metrics else 0
+        points.append(
+            TestAnalyticsPointOut(
+                date=day_key,
+                attempts=attempts,
+                average_accuracy_pct=round(avg_score, 2),
+                average_minutes_per_question=round(avg_minutes, 2),
+                xp_earned=xp_total,
+            )
+        )
+        cursor_date += timedelta(days=1)
+
+    summary = TestAnalyticsSummaryOut(
+        total_attempts=total_attempts,
+        average_accuracy_pct=round((total_score / total_attempts) if total_attempts > 0 else 0.0, 2),
+        average_minutes_per_question=round(
+            (total_minutes_per_question / total_attempts) if total_attempts > 0 else 0.0,
+            2,
+        ),
+        total_xp_earned=total_xp,
+    )
+    return TestAnalyticsOut(summary=summary, points=points)
 
 
 @router.get(

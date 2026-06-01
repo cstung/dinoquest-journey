@@ -166,7 +166,7 @@ class TestPublishRequest(APIModel):
     question_count: int = Field(ge=3, le=30)
     difficulty: str = "medium"
     time_limit_min: int = Field(default=30, ge=1, le=180)
-    max_xp: int = Field(default=100, ge=1, le=10000)
+    max_xp: int = Field(default=100, ge=1)
     assigned_user_ids: list[int]
     questions: list[TestQuestionDraft]
 
@@ -339,3 +339,70 @@ class TestReopenResolveOut(APIModel):
 
 class TestAvailabilityUpdateIn(APIModel):
     is_active: bool
+
+
+class TestUpdateRequest(APIModel):
+    title: str
+    question_count: int = Field(ge=3, le=30)
+    difficulty: str = "medium"
+    time_limit_min: int = Field(default=30, ge=1, le=180)
+    max_xp: int = Field(default=100, ge=1)
+    assigned_user_ids: list[int]
+    questions: list[TestQuestionDraft]
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Test title is required")
+        return cleaned
+
+    @field_validator("difficulty")
+    @classmethod
+    def validate_difficulty(cls, value: str) -> str:
+        lowered = value.strip().lower()
+        if lowered not in {"easy", "medium", "hard"}:
+            raise ValueError("difficulty must be easy, medium, or hard")
+        return lowered
+
+    @model_validator(mode="after")
+    def validate_questions_count(self) -> "TestUpdateRequest":
+        if len(self.questions) != self.question_count:
+            raise ValueError("questionCount must match the number of questions provided")
+        if len(set(self.assigned_user_ids)) != len(self.assigned_user_ids):
+            raise ValueError("assignedUserIds cannot contain duplicates")
+        return self
+
+
+class TestEditOut(APIModel):
+    id: int
+    title: str
+    question_count: int
+    time_limit_min: int
+    max_xp: int
+    difficulty: str
+    subtitle_source: str
+    assigned_user_ids: list[int]
+    questions: list[TestQuestionDraft]
+    has_submitted_attempts: bool
+
+
+class TestAnalyticsSummaryOut(APIModel):
+    total_attempts: int
+    average_accuracy_pct: float
+    average_minutes_per_question: float
+    total_xp_earned: int
+
+
+class TestAnalyticsPointOut(APIModel):
+    date: str
+    attempts: int
+    average_accuracy_pct: float
+    average_minutes_per_question: float
+    xp_earned: int
+
+
+class TestAnalyticsOut(APIModel):
+    summary: TestAnalyticsSummaryOut
+    points: list[TestAnalyticsPointOut]

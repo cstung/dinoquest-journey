@@ -39,7 +39,11 @@ from backend.schemas.quest import (
 from backend.schemas.reward import RewardClaimOut, RewardClaimResolveIn, RewardCreate, RewardOut, RewardUpdate
 from backend.schemas.video_test import (
     TestAnswerIn,
+    TestAnalyticsOut,
+    TestAnalyticsPointOut,
+    TestAnalyticsSummaryOut,
     TestAssignedMemberOut,
+    TestEditOut,
     TestAttemptStartOut,
     TestListItemOut,
     TestPageOut,
@@ -54,6 +58,7 @@ from backend.schemas.video_test import (
     TestReopenResolveOut,
     TestSubmitOut,
     TestSubmitRequest,
+    TestUpdateRequest,
 )
 
 __all__ = [
@@ -113,7 +118,11 @@ __all__ = [
     "RewardUpdate",
     "RegisterRequest",
     "TestAnswerIn",
+    "TestAnalyticsOut",
+    "TestAnalyticsPointOut",
+    "TestAnalyticsSummaryOut",
     "TestAssignedMemberOut",
+    "TestEditOut",
     "TestAttemptStartOut",
     "TestListItemOut",
     "TestPageOut",
@@ -128,6 +137,7 @@ __all__ = [
     "TestReopenResolveOut",
     "TestSubmitOut",
     "TestSubmitRequest",
+    "TestUpdateRequest",
     "UserOut",
     "WsTokenOut",
 ]
