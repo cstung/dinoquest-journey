@@ -49,6 +49,8 @@ function QuestDetail() {
   const [dueDate, setDueDate] = useState("");
   const [frequency, setFrequency] = useState<QuestFrequency>("once");
   const [recurrenceEndAt, setRecurrenceEndAt] = useState("");
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [thumbnailFileName, setThumbnailFileName] = useState<string | null>(null);
   const quest = query.data;
   const myAssignment = quest?.assignedMembers.find((m) => m.userId === currentUserId) ?? null;
   const completeMutation = useCompleteQuest(familyId, myAssignment?.assignmentId ?? null);
@@ -65,6 +67,8 @@ function QuestDetail() {
     setRecurrenceEndAt(
       quest.recurrenceEndAt ? new Date(quest.recurrenceEndAt).toISOString().slice(0, 10) : "",
     );
+    setThumbnailUrl(quest.thumbnailUrl ?? null);
+    setThumbnailFileName(null);
   }, [quest]);
 
   if (!familyId) {
@@ -110,12 +114,21 @@ function QuestDetail() {
 
   const onSave = async () => {
     setActionResult(null);
+    if (!Number.isFinite(xpReward) || xpReward < 1) {
+      setActionResult({
+        title: "Action Failed",
+        message: "XP Reward must be at least 1.",
+        variant: "error",
+      });
+      return;
+    }
     try {
       await updateMutation.mutateAsync({
         title,
         description: description || null,
         category: normalizeQuestCategory(category),
         difficulty,
+        thumbnailUrl,
         xpReward,
         dueDate: dueDate ? dateInputToUtcEndOfDay(dueDate) : null,
         frequency,
@@ -168,6 +181,59 @@ function QuestDetail() {
           </span>
           {editMode ? (
             <div className="rounded-2xl border-2 border-border bg-card p-4 space-y-3">
+              <div className="block">
+                <input
+                  id="quest-thumbnail-edit-input"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const dataUrl = await fileToDataUrl(file);
+                      setThumbnailUrl(dataUrl);
+                      setThumbnailFileName(shortenFileName(file.name));
+                      setActionResult(null);
+                    } catch (err) {
+                      setActionResult({
+                        title: "Action Failed",
+                        message: (err as Error).message,
+                        variant: "error",
+                      });
+                    }
+                  }}
+                />
+                <label
+                  htmlFor="quest-thumbnail-edit-input"
+                  className="aspect-square max-w-xs rounded-3xl border-2 border-dashed border-border cursor-pointer grid place-items-center text-7xl overflow-hidden bg-gradient-to-br from-primary-light to-info/30"
+                >
+                  {thumbnailUrl ? (
+                    <img
+                      src={thumbnailUrl}
+                      alt="Quest thumbnail preview"
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    "🎯"
+                  )}
+                </label>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs font-bold text-muted-foreground">
+                    {thumbnailFileName ?? "Tap to upload quest thumbnail"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setThumbnailUrl(null);
+                      setThumbnailFileName(null);
+                    }}
+                    className="rounded-lg bg-secondary text-xs font-extrabold uppercase px-2 py-1"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -257,8 +323,12 @@ function QuestDetail() {
           )}
 
           <div className="aspect-square rounded-3xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-8xl overflow-hidden">
-            {quest.thumbnailUrl ? (
-              <img src={quest.thumbnailUrl} alt={quest.title} className="size-full object-cover" />
+            {(editMode ? thumbnailUrl : quest.thumbnailUrl) ? (
+              <img
+                src={editMode ? (thumbnailUrl ?? "") : (quest.thumbnailUrl ?? "")}
+                alt={quest.title}
+                className="size-full object-cover"
+              />
             ) : (
               "🎯"
             )}
@@ -405,4 +475,37 @@ function normalizeQuestCategory(value: string): string {
 function dateInputToUtcEndOfDay(value: string): string {
   // VN business-day end (UTC+7) represented in UTC.
   return `${value}T16:59:59.999Z`;
+}
+
+async function fileToDataUrl(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Please upload an image file.");
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    throw new Error("Image must be 2MB or smaller.");
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Failed to read image."));
+        return;
+      }
+      resolve(result);
+    };
+    reader.onerror = () => reject(new Error("Failed to read image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function shortenFileName(name: string): string {
+  if (name.length <= 20) {
+    return name;
+  }
+  const lastDot = name.lastIndexOf(".");
+  const hasExt = lastDot > 0 && lastDot < name.length - 1;
+  const ext = hasExt ? name.slice(lastDot) : "";
+  const base = hasExt ? name.slice(0, lastDot) : name;
+  return `${base.slice(0, 3)}...${base.slice(-4)}${ext}`;
 }

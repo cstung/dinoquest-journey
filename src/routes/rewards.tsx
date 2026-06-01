@@ -2,10 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Plus, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ExpandableText } from "@/components/expandable-text";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import {
-  MAX_REWARD_XP_COST,
   useClaimReward,
   useCreateReward,
   useResolveRewardClaim,
@@ -69,14 +69,6 @@ function RewardsPage() {
 
   const create = async () => {
     setActionResult(null);
-    if (newCost > MAX_REWARD_XP_COST) {
-      setActionResult({
-        title: "Action Failed",
-        message: `XP cost cannot exceed ${MAX_REWARD_XP_COST.toLocaleString()}.`,
-        variant: "error",
-      });
-      return;
-    }
     try {
       await createReward.mutateAsync({
         title: newTitle,
@@ -162,7 +154,6 @@ function RewardsPage() {
             value={newCost}
             onChange={(e) => setNewCost(Number(e.target.value))}
             min={1}
-            max={MAX_REWARD_XP_COST}
             className="rounded-xl border-2 border-border bg-background px-3 py-2 font-bold text-sm focus:outline-none focus:border-primary"
           />
           <button
@@ -268,14 +259,6 @@ function RewardCard({
 
   const onSave = async () => {
     setActionResult(null);
-    if (xpCost > MAX_REWARD_XP_COST) {
-      setActionResult({
-        title: "Action Failed",
-        message: `XP cost cannot exceed ${MAX_REWARD_XP_COST.toLocaleString()}.`,
-        variant: "error",
-      });
-      return;
-    }
     try {
       await updateReward.mutateAsync({
         title,
@@ -323,7 +306,10 @@ function RewardCard({
           <img
             src={displayThumbnail}
             alt={reward.title}
-            className={cn("size-full object-cover rounded-2xl", !reward.isActive && "grayscale saturate-0")}
+            className={cn(
+              "size-full object-cover rounded-2xl",
+              !reward.isActive && "grayscale saturate-0",
+            )}
           />
         ) : (
           "🎁"
@@ -344,7 +330,6 @@ function RewardCard({
           <input
             type="number"
             min={1}
-            max={MAX_REWARD_XP_COST}
             value={xpCost}
             onChange={(e) => setXpCost(Number(e.target.value))}
             className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm font-bold"
@@ -391,9 +376,11 @@ function RewardCard({
             </h3>
           </div>
           <div className="flex-1 min-h-[3.75rem]">
-            <p className="text-sm text-muted-foreground break-words line-clamp-3">
-              {descriptionText || "No description."}
-            </p>
+            <ExpandableText
+              text={descriptionText || "No description."}
+              maxLines={3}
+              className="text-sm text-muted-foreground break-words"
+            />
           </div>
         </>
       )}
@@ -427,7 +414,9 @@ function RewardCard({
                 </button>
                 <button
                   onClick={toggleActive}
-                  disabled={updateReward.isPending || (reward.isActive && hasPendingClaimsForReward)}
+                  disabled={
+                    updateReward.isPending || (reward.isActive && hasPendingClaimsForReward)
+                  }
                   className={cn(
                     "rounded-lg text-xs font-extrabold uppercase px-2 py-1",
                     reward.isActive ? "bg-destructive text-destructive-foreground" : "bg-secondary",

@@ -2,20 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { apiRequest } from "@/lib/api";
 
-export const MAX_REWARD_XP_COST = 1_000_000_000;
-
 const rewardCreateSchema = z.object({
   title: z.string(),
   description: z.string().nullable().optional(),
   thumbnailUrl: z.string().nullable().optional(),
-  xpCost: z.number().min(1).max(MAX_REWARD_XP_COST),
+  xpCost: z.number().min(1),
 });
 
 const rewardUpdateSchema = z.object({
   title: z.string().optional(),
   description: z.string().nullable().optional(),
   thumbnailUrl: z.string().nullable().optional(),
-  xpCost: z.number().min(1).max(MAX_REWARD_XP_COST).optional(),
+  xpCost: z.number().min(1).optional(),
   isActive: z.boolean().optional(),
 });
 

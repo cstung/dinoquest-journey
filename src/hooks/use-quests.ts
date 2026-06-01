@@ -50,7 +50,10 @@ export interface QuestCompleteResult {
 
 export function useQuests(
   familyId: number | null,
-  options?: { search?: string; status?: "all" | "pending" | "pending_approval" | "completed" | "missed" },
+  options?: {
+    search?: string;
+    status?: "all" | "pending" | "pending_approval" | "completed" | "missed";
+  },
 ) {
   return useQuery({
     queryKey: ["quests", familyId, options?.search ?? "", options?.status ?? "all"],
@@ -102,9 +105,12 @@ export function useCompleteQuest(familyId: number | null, assignmentId: number |
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiRequest<QuestCompleteResult>(`/api/families/${familyId}/quest-assignments/${assignmentId}/complete`, {
-        method: "POST",
-      }),
+      apiRequest<QuestCompleteResult>(
+        `/api/families/${familyId}/quest-assignments/${assignmentId}/complete`,
+        {
+          method: "POST",
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["quests", familyId] });
       queryClient.invalidateQueries({ queryKey: ["quest", familyId] });
@@ -116,10 +122,13 @@ export function useResolveQuestCompletion(familyId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: { assignmentId: number; decision: "approve" | "reject" }) =>
-      apiRequest<QuestCompleteResult>(`/api/families/${familyId}/quest-assignments/${body.assignmentId}/resolve`, {
-        method: "POST",
-        body: JSON.stringify({ decision: body.decision }),
-      }),
+      apiRequest<QuestCompleteResult>(
+        `/api/families/${familyId}/quest-assignments/${body.assignmentId}/resolve`,
+        {
+          method: "POST",
+          body: JSON.stringify({ decision: body.decision }),
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["quests", familyId] });
       queryClient.invalidateQueries({ queryKey: ["quest", familyId] });

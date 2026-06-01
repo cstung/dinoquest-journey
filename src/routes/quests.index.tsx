@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ExpandableText } from "@/components/expandable-text";
 import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import {
   useCompleteQuest,
@@ -152,7 +153,10 @@ function QuestsPage() {
   const handleResolve = async (item: ParentApprovalItem, decision: "approve" | "reject") => {
     setQueueResult(null);
     try {
-      const result = await resolveCompletion.mutateAsync({ assignmentId: item.assignmentId, decision });
+      const result = await resolveCompletion.mutateAsync({
+        assignmentId: item.assignmentId,
+        decision,
+      });
       if (decision === "approve") {
         setQueueResult({
           title: "Approved",
@@ -176,7 +180,11 @@ function QuestsPage() {
   };
 
   if (!familyId) {
-    return <div className="py-10 text-sm text-muted-foreground">Select a family first to view quests.</div>;
+    return (
+      <div className="py-10 text-sm text-muted-foreground">
+        Select a family first to view quests.
+      </div>
+    );
   }
 
   if (isLoading) {
@@ -220,7 +228,9 @@ function QuestsPage() {
             onClick={() => setTab(t)}
             className={cn(
               "px-4 py-2.5 font-display font-extrabold uppercase text-sm tracking-wide border-b-4 -mb-0.5 transition-colors",
-              tab === t ? TAB_ACTIVE_STYLES[t] : "border-transparent text-muted-foreground hover:text-foreground",
+              tab === t
+                ? TAB_ACTIVE_STYLES[t]
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {getTabLabel(t, isParent)}
@@ -232,15 +242,22 @@ function QuestsPage() {
         <div className="rounded-2xl bg-card border-2 border-border p-4 space-y-3">
           <h3 className="font-display font-extrabold">🔔 Waiting for Your Review</h3>
           {pendingApprovals.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing waiting for your review right now.</p>
+            <p className="text-sm text-muted-foreground">
+              Nothing waiting for your review right now.
+            </p>
           ) : (
             <div className="space-y-2">
               {pendingApprovals.map((item) => (
-                <div key={item.assignmentId} className="rounded-xl border-2 border-border p-3 flex items-center gap-3 flex-wrap">
+                <div
+                  key={item.assignmentId}
+                  className="rounded-xl border-2 border-border p-3 flex items-center gap-3 flex-wrap"
+                >
                   <div className="flex-1 min-w-[220px]">
                     <p className="font-bold text-sm">{item.questTitle}</p>
                     <p className="text-xs text-muted-foreground">{item.username}</p>
-                    <p className="text-xs text-muted-foreground">{formatRelativeSubmittedTime(item.completionRequestedAt)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatRelativeSubmittedTime(item.completionRequestedAt)}
+                    </p>
                     <p className="text-xs font-extrabold text-warning">🌟 {item.xpReward} XP</p>
                   </div>
                   <div className="flex gap-2">
@@ -268,7 +285,13 @@ function QuestsPage() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {quests.map((q) => (
-          <QuestCard key={q.id} quest={q} currentUserId={currentUserId} isParent={isParent} familyId={familyId} />
+          <QuestCard
+            key={q.id}
+            quest={q}
+            currentUserId={currentUserId}
+            isParent={isParent}
+            familyId={familyId}
+          />
         ))}
       </div>
 
@@ -323,7 +346,8 @@ function QuestCard({
   };
 
   const statusBadge = (myAssignment?.status ?? quest.status) as QuestStatus;
-  const childActionDisabled = !myAssignment || completeMutation.isPending || myAssignment.status !== "pending";
+  const childActionDisabled =
+    !myAssignment || completeMutation.isPending || myAssignment.status !== "pending";
 
   return (
     <div className="rounded-2xl bg-card border-2 border-border p-5 card-pop flex flex-col">
@@ -339,7 +363,8 @@ function QuestCard({
         <span
           className={cn(
             "text-xs font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-md",
-            CATEGORY_COLORS[quest.category.trim().toLowerCase()] ?? "bg-secondary text-secondary-foreground",
+            CATEGORY_COLORS[quest.category.trim().toLowerCase()] ??
+              "bg-secondary text-secondary-foreground",
           )}
         >
           {getQuestCategoryLabel(quest.category)}
@@ -352,16 +377,27 @@ function QuestCard({
       </div>
 
       <Link to="/quests/$questId" params={{ questId: String(quest.id) }} className="block">
-        <h3 className="font-display font-extrabold text-lg leading-tight mb-1 hover:underline">{quest.title}</h3>
+        <h3 className="font-display font-extrabold text-lg leading-tight mb-1 hover:underline">
+          {quest.title}
+        </h3>
       </Link>
 
-      <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{quest.description || "No description."}</p>
+      <div className="flex-1">
+        <ExpandableText
+          text={quest.description || "No description."}
+          maxLines={2}
+          className="text-sm text-muted-foreground"
+        />
+      </div>
 
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-border gap-2">
         <span className="text-sm font-extrabold text-warning">+{quest.xpReward} XP</span>
         {isParent ? (
           <span
-            className={cn("text-[10px] font-extrabold uppercase px-2 py-1 rounded", STATUS_BADGE_STYLES[statusBadge])}
+            className={cn(
+              "text-[10px] font-extrabold uppercase px-2 py-1 rounded",
+              STATUS_BADGE_STYLES[statusBadge],
+            )}
             aria-label={`Status: ${getStatusLabel(statusBadge, true)}`}
           >
             {getStatusLabel(statusBadge, true)}
@@ -369,7 +405,10 @@ function QuestCard({
         ) : (
           <div className="flex items-center gap-2">
             <span
-              className={cn("text-[10px] font-extrabold uppercase px-2 py-1 rounded", STATUS_BADGE_STYLES[statusBadge])}
+              className={cn(
+                "text-[10px] font-extrabold uppercase px-2 py-1 rounded",
+                STATUS_BADGE_STYLES[statusBadge],
+              )}
               aria-label={`Status: ${getStatusLabel(statusBadge, false)}`}
             >
               {getStatusLabel(statusBadge, false)}

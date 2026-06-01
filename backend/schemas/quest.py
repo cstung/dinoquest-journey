@@ -22,7 +22,7 @@ class QuestCreate(APIModel):
     category: str = "learning"
     difficulty: str = "Easy"
     thumbnail_url: str | None = None
-    xp_reward: int = Field(default=10, ge=1, le=10000)
+    xp_reward: int = Field(default=10, ge=1)
     due_date: datetime | None = None
     recurrence_end_at: datetime | None = None
     frequency: QuestFrequency = QuestFrequency.once
@@ -86,7 +86,7 @@ class QuestUpdate(APIModel):
     category: str | None = None
     difficulty: str | None = None
     thumbnail_url: str | None = None
-    xp_reward: int | None = Field(default=None, ge=1, le=10000)
+    xp_reward: int | None = Field(default=None, ge=1)
     due_date: datetime | None = None
     recurrence_end_at: datetime | None = None
     frequency: QuestFrequency | None = None
