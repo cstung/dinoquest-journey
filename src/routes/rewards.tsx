@@ -406,12 +406,12 @@ function RewardCard({
           </div>
         </>
       )}
-      <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
-        <span className="font-display font-extrabold text-warning text-lg">
+      <div className="flex items-center justify-between flex-wrap gap-2 mt-4 pt-3 border-t border-border">
+        <span className="font-display font-extrabold text-warning text-lg min-w-0">
           {formatXp(reward.xpCost)} XP
         </span>
         {isParent ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2 max-w-full">
             {editMode ? (
               <>
                 <button
