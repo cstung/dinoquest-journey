@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     tz: str = "Asia/Ho_Chi_Minh"
     db_path: str = "./data/dinoquest.db"
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o"
+    openai_model: str = "gpt-5.5"
     whisper_model: str = "whisper-1"
     test_transcript_max_chars: int = 12000
     subtitle_title_timeout_seconds: float = 4.0
