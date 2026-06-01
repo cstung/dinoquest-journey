@@ -388,7 +388,8 @@ function QuestCard({
         <ExpandableText
           text={quest.description || "No description."}
           maxLines={2}
-          className="text-sm text-muted-foreground"
+          className="text-sm text-muted-foreground leading-relaxed break-words"
+          buttonClassName="mt-1 inline-flex text-[10px] font-display font-extrabold uppercase tracking-wide text-primary hover:underline"
         />
       </div>
 

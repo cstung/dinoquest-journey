@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type ExpandableTextProps = {
   text: string;
@@ -17,24 +17,52 @@ export function ExpandableText({
   const [expanded, setExpanded] = useState(false);
   const [isOverflowing, setIsOverflowing] = useState(false);
 
-  useEffect(() => {
+  const measureOverflow = useCallback(() => {
     const el = textRef.current;
     if (!el) return;
-    setExpanded(false);
+
     const previous = el.style.webkitLineClamp;
     const previousDisplay = el.style.display;
     const previousOrient = el.style.webkitBoxOrient;
     const previousOverflow = el.style.overflow;
+    const previousOverflowWrap = el.style.overflowWrap;
+    const previousWordBreak = el.style.wordBreak;
+
     el.style.display = "-webkit-box";
     el.style.webkitBoxOrient = "vertical";
     el.style.webkitLineClamp = String(maxLines);
     el.style.overflow = "hidden";
-    setIsOverflowing(el.scrollHeight > el.clientHeight + 1);
+    el.style.overflowWrap = "anywhere";
+    el.style.wordBreak = "break-word";
+
+    const isVerticalOverflow = el.scrollHeight > el.clientHeight + 1;
+    const isHorizontalOverflow = el.scrollWidth > el.clientWidth + 1;
+    setIsOverflowing(isVerticalOverflow || isHorizontalOverflow);
+
     el.style.webkitLineClamp = previous;
     el.style.display = previousDisplay;
     el.style.webkitBoxOrient = previousOrient;
     el.style.overflow = previousOverflow;
+    el.style.overflowWrap = previousOverflowWrap;
+    el.style.wordBreak = previousWordBreak;
+  }, [maxLines]);
+
+  useEffect(() => {
+    setExpanded(false);
   }, [text, maxLines]);
+
+  useEffect(() => {
+    measureOverflow();
+    const el = textRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      measureOverflow();
+    });
+    observer.observe(el);
+
+    return () => observer.disconnect();
+  }, [measureOverflow, text, maxLines]);
 
   return (
     <div>
@@ -49,6 +77,8 @@ export function ExpandableText({
                 WebkitBoxOrient: "vertical",
                 WebkitLineClamp: String(maxLines),
                 overflow: "hidden",
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
               }
         }
       >
