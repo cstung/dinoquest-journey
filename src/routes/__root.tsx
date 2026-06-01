@@ -16,6 +16,8 @@ import { ApiError, apiRequest } from "@/lib/api";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { Toaster } from "@/components/ui/sonner";
 
+const AUTH_CHECK_TIMEOUT_MS = 6000;
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -59,11 +61,18 @@ function RootComponent() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const activeFamilyId = useFamilyStore((s) => s.activeFamilyId);
   const setActiveFamily = useFamilyStore((s) => s.setActiveFamily);
-  const [authCheckDone, setAuthCheckDone] = useState(isAuthPage);
+  const [authCheckDone, setAuthCheckDone] = useState(isAuthPage || isAuthenticated);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authRetry, setAuthRetry] = useState(0);
 
   useFamilyRealtime(activeFamilyId, isAuthenticated, queryClient);
+
+  useEffect(() => {
+    if (!isAuthPage && isAuthenticated) {
+      setAuthCheckDone(true);
+      setAuthError(null);
+    }
+  }, [isAuthPage, isAuthenticated]);
 
   useEffect(() => {
     if (!import.meta.env.PROD || typeof window === "undefined" || !("serviceWorker" in navigator)) {
@@ -81,8 +90,11 @@ function RootComponent() {
       return;
     }
 
-    setAuthCheckDone(false);
-    setAuthError(null);
+    const isBlockingCheck = !isAuthenticated;
+    if (isBlockingCheck) {
+      setAuthCheckDone(false);
+      setAuthError(null);
+    }
     let active = true;
     apiRequest<{
       id: number;
@@ -93,6 +105,7 @@ function RootComponent() {
       role: "parent" | "child" | null;
     }>(
       "/api/auth/me",
+      { timeoutMs: AUTH_CHECK_TIMEOUT_MS },
     )
       .then((user) => {
         if (!active) return;
@@ -120,13 +133,15 @@ function RootComponent() {
           navigate({ to: "/login", replace: true });
           return;
         }
-        setAuthError("Unable to verify session right now. Please retry.");
-        setAuthCheckDone(true);
+        if (isBlockingCheck) {
+          setAuthError("Unable to verify session right now. Please retry.");
+          setAuthCheckDone(true);
+        }
       });
     return () => {
       active = false;
     };
-  }, [isAuthPage, login, logout, navigate, setActiveFamily, authRetry]);
+  }, [isAuthPage, isAuthenticated, login, logout, navigate, setActiveFamily, authRetry]);
 
   return (
     <QueryClientProvider client={queryClient}>

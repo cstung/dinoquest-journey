@@ -40,19 +40,55 @@ function formatErrorDetail(detail: ErrorDetail | undefined): string {
   return "Something went wrong";
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+type ApiRequestInit = RequestInit & {
+  timeoutMs?: number;
+};
+
+export async function apiRequest<T>(path: string, init?: ApiRequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
-  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
-  const res = await fetch(url, {
-    credentials: "include",
-    ...init,
-    headers: isFormData
-      ? { ...(init?.headers ?? {}) }
-      : {
-          "Content-Type": "application/json",
-          ...(init?.headers ?? {}),
-        },
-  });
+  const { timeoutMs, signal: externalSignal, ...fetchInit } = init ?? {};
+  const isFormData = typeof FormData !== "undefined" && fetchInit.body instanceof FormData;
+  const timeoutController = timeoutMs != null ? new AbortController() : null;
+  const timeoutId =
+    timeoutController != null
+      ? globalThis.setTimeout(() => timeoutController.abort(), timeoutMs)
+      : null;
+  const signal = (() => {
+    if (!externalSignal) return timeoutController?.signal;
+    if (!timeoutController) return externalSignal;
+    if (typeof AbortSignal.any === "function") {
+      return AbortSignal.any([externalSignal, timeoutController.signal]);
+    }
+    const combinedController = new AbortController();
+    const onAbort = () => combinedController.abort();
+    externalSignal.addEventListener("abort", onAbort, { once: true });
+    timeoutController.signal.addEventListener("abort", onAbort, { once: true });
+    return combinedController.signal;
+  })();
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      credentials: "include",
+      ...fetchInit,
+      signal,
+      headers: isFormData
+        ? { ...(fetchInit.headers ?? {}) }
+        : {
+            "Content-Type": "application/json",
+            ...(fetchInit.headers ?? {}),
+          },
+    });
+  } catch (err) {
+    if (timeoutController?.signal.aborted && !(externalSignal?.aborted)) {
+      throw new ApiError("Request timed out. Please try again.", 408);
+    }
+    throw err;
+  } finally {
+    if (timeoutId != null) {
+      globalThis.clearTimeout(timeoutId);
+    }
+  }
 
   if (!res.ok) {
     let detail = "Something went wrong";
