@@ -105,6 +105,20 @@ export function useUpdateReward(familyId: number | null, rewardId: number | null
   });
 }
 
+export function useDeleteReward(familyId: number | null, rewardId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<void>(`/api/families/${familyId}/rewards/${rewardId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["rewards", familyId] });
+      queryClient.invalidateQueries({ queryKey: ["reward-claims", familyId] });
+    },
+  });
+}
+
 export function useClaimReward(familyId: number | null, rewardId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({

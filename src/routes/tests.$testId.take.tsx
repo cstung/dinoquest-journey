@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowLeft, ArrowRight, Clock, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatXp } from "@/lib/utils";
 import { useFamilyStore } from "@/store";
 import {
   useAttemptReview,
@@ -319,7 +319,7 @@ function TestTakePage() {
       <div className="rounded-2xl bg-card border-2 border-border p-4">
         <h1 className="text-2xl">{attempt.title}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {attempt.questionCount} questions • +{attempt.maxXp} XP
+          {attempt.questionCount} questions • +{formatXp(attempt.maxXp)} XP
         </p>
       </div>
 
@@ -469,7 +469,7 @@ function TestTakePage() {
                   {reviewQuery.data.scorePct}%)
                 </p>
                 <p className="text-sm text-warning font-extrabold mt-1">
-                  +{reviewQuery.data.xpEarned} XP earned
+                  +{formatXp(reviewQuery.data.xpEarned)} XP earned
                 </p>
               </div>
 

@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { Plus, Zap } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Plus, Trash2, Zap } from "lucide-react";
+import { cn, formatXp } from "@/lib/utils";
 import { ExpandableText } from "@/components/expandable-text";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import {
   useClaimReward,
   useCreateReward,
+  useDeleteReward,
   useResolveRewardClaim,
   useRewardClaims,
   useRewards,
@@ -107,7 +108,7 @@ function RewardsPage() {
         </div>
         <div>
           <div className="text-xs font-extrabold uppercase text-muted-foreground">Your balance</div>
-          <div className="font-display font-extrabold text-2xl">{balance.toLocaleString()} XP</div>
+          <div className="font-display font-extrabold text-2xl">{formatXp(balance)} XP</div>
         </div>
       </div>
 
@@ -229,6 +230,7 @@ function RewardCard({
   const affordable = balance >= reward.xpCost;
   const claim = useClaimReward(familyId, reward.id);
   const updateReward = useUpdateReward(familyId, reward.id);
+  const deleteReward = useDeleteReward(familyId, reward.id);
   const [editMode, setEditMode] = useState(false);
   const [title, setTitle] = useState(reward.title);
   const [description, setDescription] = useState(reward.description ?? "");
@@ -288,6 +290,26 @@ function RewardCard({
       setActionResult({
         title: "Updated",
         message: reward.isActive ? "Reward deactivated." : "Reward activated.",
+        variant: "success",
+      });
+    } catch (err) {
+      setActionResult({
+        title: "Action Failed",
+        message: (err as Error).message,
+        variant: "error",
+      });
+    }
+  };
+
+  const onDelete = async () => {
+    const confirmed = window.confirm(`Delete "${reward.title}"? This cannot be undone.`);
+    if (!confirmed) return;
+    setActionResult(null);
+    try {
+      await deleteReward.mutateAsync();
+      setActionResult({
+        title: "Deleted",
+        message: "Reward deleted.",
         variant: "success",
       });
     } catch (err) {
@@ -385,7 +407,9 @@ function RewardCard({
         </>
       )}
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
-        <span className="font-display font-extrabold text-warning text-lg">{reward.xpCost} XP</span>
+        <span className="font-display font-extrabold text-warning text-lg">
+          {formatXp(reward.xpCost)} XP
+        </span>
         {isParent ? (
           <div className="flex gap-2">
             {editMode ? (
@@ -424,6 +448,17 @@ function RewardCard({
                   )}
                 >
                   {reward.isActive ? "Deactivate" : "Activate"}
+                </button>
+                <button
+                  onClick={onDelete}
+                  disabled={deleteReward.isPending || hasPendingClaimsForReward}
+                  className={cn(
+                    "rounded-lg bg-destructive text-destructive-foreground text-xs font-extrabold uppercase px-2 py-1 inline-flex items-center gap-1",
+                    hasPendingClaimsForReward && "opacity-60 cursor-not-allowed",
+                  )}
+                >
+                  <Trash2 className="size-3.5" />
+                  {deleteReward.isPending ? "Deleting..." : "Delete"}
                 </button>
               </>
             )}

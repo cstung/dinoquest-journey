@@ -57,7 +57,7 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatXp } from "@/lib/utils";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { ApiError, apiRequest } from "@/lib/api";
 
@@ -221,7 +221,7 @@ function eventText(ev: ActivityEv): {
       return {
         icon: "??",
         color: "bg-success/15 text-success-foreground",
-        text: `Completed "${questTitle}" (+${ev.payload.xp ?? 0} XP)`,
+        text: `Completed "${questTitle}" (+${formatXp(Number(ev.payload.xp ?? 0))} XP)`,
       };
     case "quest_cycle_created":
       return {
@@ -257,7 +257,7 @@ function eventText(ev: ActivityEv): {
       return {
         icon: "?",
         color: "bg-primary/15 text-primary-dark",
-        text: `${Number(ev.payload.delta ?? ev.payload.xp ?? 0) >= 0 ? "Earned" : "Spent"} ${Math.abs(Number(ev.payload.delta ?? ev.payload.xp ?? 0))} XP`,
+        text: `${Number(ev.payload.delta ?? ev.payload.xp ?? 0) >= 0 ? "Earned" : "Spent"} ${formatXp(Math.abs(Number(ev.payload.delta ?? ev.payload.xp ?? 0)))} XP`,
       };
     case "parent_reward": {
       const xp = Number(ev.payload.xp ?? 0);
@@ -270,7 +270,7 @@ function eventText(ev: ActivityEv): {
       return {
         icon: "🎁",
         color: "bg-purple/15 text-purple",
-        text: `Direct reward (+${xp} XP)`,
+        text: `Direct reward (+${formatXp(xp)} XP)`,
         subtitle: reason,
       };
     }

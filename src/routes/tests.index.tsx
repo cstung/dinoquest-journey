@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AlertCircle, Clock, Play, Plus, Power, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatXp } from "@/lib/utils";
 import { useFamilyStore } from "@/store";
 import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import {
@@ -191,7 +191,7 @@ function TestCard({
         title: decision === "approve" ? "Approved" : "Rejected",
         message:
           decision === "approve"
-            ? `Reopen approved (XP delta ${result.xpDelta}).`
+            ? `Reopen approved (XP delta ${formatXp(result.xpDelta)}).`
             : "Reopen request rejected.",
         variant: decision === "approve" ? "success" : "warning",
       });
@@ -298,7 +298,9 @@ function TestCard({
               ))}
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-sm font-extrabold text-warning">+{test.maxXp} XP</span>
+              <span className="text-sm font-extrabold text-warning">
+                +{formatXp(test.maxXp)} XP
+              </span>
               {isParent ? (
                 <div className="flex items-center gap-2">
                   <button

@@ -11,7 +11,7 @@ import {
   Users,
   Shield,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatXp } from "@/lib/utils";
 import { useAuthStore, useFamilyStore } from "@/store";
 import { XPBar } from "./xp-bar";
 import { useLeaderboard } from "@/hooks/use-leaderboard";
@@ -136,7 +136,9 @@ export function Sidebar() {
               size="sm"
               showNumbers={false}
             />
-            <div className="text-xs text-muted-foreground tabular-nums">{balance} XP balance</div>
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {formatXp(balance)} XP balance
+            </div>
           </div>
         </div>
       )}

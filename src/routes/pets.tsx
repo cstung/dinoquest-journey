@@ -7,6 +7,7 @@ import { useFamilyStore } from "@/store";
 import { useCreatePet, useFeedPet, usePets, type PetItem } from "@/hooks/use-pets";
 import { apiRequest } from "@/lib/api";
 import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
+import { formatXp } from "@/lib/utils";
 
 export const Route = createFileRoute("/pets")({ component: PetsPage });
 
@@ -77,8 +78,8 @@ function PetsPage() {
       setActionResult({
         title: result.levelUp ? "Level Up" : "Completed",
         message: result.levelUp
-          ? `Fed! +${result.gainedXp} XP and level up to ${result.level}.`
-          : `Fed! +${result.gainedXp} XP.`,
+          ? `Fed! +${formatXp(result.gainedXp)} XP and level up to ${result.level}.`
+          : `Fed! +${formatXp(result.gainedXp)} XP.`,
         variant: "success",
       });
     } catch (err) {

@@ -50,7 +50,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatXp } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
 import { MOOD_ICON_OPTIONS } from "@/lib/mood-icons";
 import { FAMILY_REALTIME_MESSAGE_EVENT, FAMILY_REALTIME_STATUS_EVENT } from "@/hooks/use-realtime";
@@ -436,7 +436,7 @@ function FamilyDashboardPage() {
         body: JSON.stringify({ xp, message }),
       }),
     onSuccess: (_, { xp }) => {
-      toast.success(`Boost sent! +${xp} XP`);
+      toast.success(`Boost sent! +${formatXp(xp)} XP`);
       queryClient.invalidateQueries({ queryKey: ["wall-feed", familyId] });
     },
     onError: () => toast.error("Could not send boost."),

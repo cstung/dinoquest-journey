@@ -11,6 +11,7 @@ import { ArrowLeft, Calendar, Award, Zap, Repeat, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import { getQuestCategoryLabel, getQuestCategoryOptionsWithFallback } from "@/lib/quest-categories";
+import { formatXp } from "@/lib/utils";
 
 export const Route = createFileRoute("/quests/$questId")({ component: QuestDetail });
 
@@ -345,7 +346,9 @@ function QuestDetail() {
               </div>
               <div>
                 <div className="text-xs font-bold text-muted-foreground uppercase">XP Reward</div>
-                <div className="font-display font-extrabold text-xl">+{quest.xpReward} XP</div>
+                <div className="font-display font-extrabold text-xl">
+                  +{formatXp(quest.xpReward)} XP
+                </div>
               </div>
             </div>
             {(myAssignment?.cycleDueAt || quest.dueDate) && (

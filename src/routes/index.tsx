@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getQuestCategoryLabel } from "@/lib/quest-categories";
+import { formatXp } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({ component: HomePage });
 
@@ -377,7 +378,9 @@ function HomePage() {
                     <span className="text-xs font-extrabold uppercase tracking-wide px-2 py-1 rounded-md bg-primary/15 text-primary-dark">
                       {getQuestCategoryLabel(q.category)}
                     </span>
-                    <span className="text-xs font-extrabold text-warning">+{q.xpReward} XP</span>
+                    <span className="text-xs font-extrabold text-warning">
+                      +{formatXp(q.xpReward)} XP
+                    </span>
                   </div>
                   <h3 className="font-display font-extrabold text-base leading-tight">{q.title}</h3>
                   {q.dueDate && (

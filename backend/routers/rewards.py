@@ -28,7 +28,10 @@ async def list_rewards(
     include_inactive: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ) -> list[RewardOut]:
-    stmt = select(RewardItem).where(RewardItem.family_id == membership.family_id)
+    stmt = select(RewardItem).where(
+        RewardItem.family_id == membership.family_id,
+        RewardItem.is_deleted.is_(False),
+    )
     if membership.role != "parent" or not include_inactive:
         stmt = stmt.where(RewardItem.is_active.is_(True))
     rows = await db.execute(stmt.order_by(RewardItem.created_at.desc(), RewardItem.id.desc()))
@@ -82,6 +85,7 @@ async def update_reward(
             select(RewardItem).where(
                 RewardItem.id == reward_id,
                 RewardItem.family_id == parent_member.family_id,
+                RewardItem.is_deleted.is_(False),
             )
         )
     ).scalar_one_or_none()
@@ -145,6 +149,7 @@ async def claim_reward(
                 RewardItem.id == reward_id,
                 RewardItem.family_id == membership.family_id,
                 RewardItem.is_active.is_(True),
+                RewardItem.is_deleted.is_(False),
             )
         )
     ).scalar_one_or_none()
@@ -217,6 +222,62 @@ async def claim_reward(
         requested_at=claim.requested_at,
         resolved_at=claim.resolved_at,
         resolved_by=claim.resolved_by,
+    )
+
+
+@router.delete(
+    "/{family_id}/rewards/{reward_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+async def delete_reward(
+    reward_id: int,
+    parent_member: FamilyMember = Depends(require_parent),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    item = (
+        await db.execute(
+            select(RewardItem).where(
+                RewardItem.id == reward_id,
+                RewardItem.family_id == parent_member.family_id,
+                RewardItem.is_deleted.is_(False),
+            )
+        )
+    ).scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Reward not found")
+
+    pending_claim = (
+        await db.execute(
+            select(RewardClaim).where(
+                RewardClaim.reward_id == item.id,
+                RewardClaim.family_id == parent_member.family_id,
+                RewardClaim.status == "pending",
+            )
+        )
+    ).scalars().first()
+    if pending_claim:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete reward while pending claim requests exist.",
+        )
+
+    item.is_active = False
+    item.is_deleted = True
+    db.add(
+        ActivityLog(
+            family_id=parent_member.family_id,
+            user_id=parent_member.user_id,
+            event_type="reward_deleted",
+            payload={"reward_id": item.id, "title": item.title},
+            is_audit=True,
+        )
+    )
+    await db.commit()
+    await emit_family_event(
+        parent_member.family_id,
+        "reward_updated",
+        {"action": "deleted", "rewardId": item.id},
     )
 
 

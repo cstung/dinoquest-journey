@@ -218,6 +218,30 @@ def test_websocket_receives_reward_claim_resolution_event(client: TestClient) ->
         assert event["payload"]["claimId"] == claim_id
 
 
+def test_parent_can_delete_reward_and_child_cannot(client: TestClient) -> None:
+    family_id, _, child_client = _setup_family_with_child(client)
+
+    created = client.post(
+        f"/api/families/{family_id}/rewards",
+        json={"title": "Ice cream", "description": "Weekend reward", "xpCost": 250},
+    )
+    assert created.status_code == 201, created.text
+    reward_id = created.json()["id"]
+
+    child_delete = child_client.delete(f"/api/families/{family_id}/rewards/{reward_id}")
+    assert child_delete.status_code == 403, child_delete.text
+
+    parent_delete = client.delete(f"/api/families/{family_id}/rewards/{reward_id}")
+    assert parent_delete.status_code == 204, parent_delete.text
+
+    rewards = client.get(f"/api/families/{family_id}/rewards?include_inactive=true")
+    assert rewards.status_code == 200, rewards.text
+    assert all(item["id"] != reward_id for item in rewards.json())
+
+    claim_deleted = child_client.post(f"/api/families/{family_id}/rewards/{reward_id}/claim")
+    assert claim_deleted.status_code == 404, claim_deleted.text
+
+
 def test_preview_subtitle_returns_422_when_unavailable(
     client: TestClient,
     monkeypatch,

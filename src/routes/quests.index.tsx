@@ -12,6 +12,7 @@ import {
   type QuestItem,
 } from "@/hooks/use-quests";
 import { getQuestCategoryLabel } from "@/lib/quest-categories";
+import { formatXp } from "@/lib/utils";
 
 export const Route = createFileRoute("/quests/")({ component: QuestsPage });
 
@@ -160,7 +161,7 @@ function QuestsPage() {
       if (decision === "approve") {
         setQueueResult({
           title: "Approved",
-          message: `✅ Approved! ${item.username} earned ${result.xpAwarded} XP!`,
+          message: `✅ Approved! ${item.username} earned ${formatXp(result.xpAwarded)} XP!`,
           variant: "success",
         });
       } else {
@@ -258,7 +259,9 @@ function QuestsPage() {
                     <p className="text-xs text-muted-foreground">
                       {formatRelativeSubmittedTime(item.completionRequestedAt)}
                     </p>
-                    <p className="text-xs font-extrabold text-warning">🌟 {item.xpReward} XP</p>
+                    <p className="text-xs font-extrabold text-warning">
+                      🌟 {formatXp(item.xpReward)} XP
+                    </p>
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -394,7 +397,7 @@ function QuestCard({
       </div>
 
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-border gap-2">
-        <span className="text-sm font-extrabold text-warning">+{quest.xpReward} XP</span>
+        <span className="text-sm font-extrabold text-warning">+{formatXp(quest.xpReward)} XP</span>
         {isParent ? (
           <span
             className={cn(
