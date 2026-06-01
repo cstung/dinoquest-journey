@@ -351,13 +351,15 @@ function QuestCard({
 
   return (
     <div className="rounded-2xl bg-card border-2 border-border p-5 card-pop flex flex-col">
-      <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-7xl mb-3 overflow-hidden">
-        {quest.thumbnailUrl ? (
-          <img src={quest.thumbnailUrl} alt={quest.title} className="size-full object-cover" />
-        ) : (
-          "🦖"
-        )}
-      </div>
+      <Link to="/quests/$questId" params={{ questId: String(quest.id) }} className="block mb-3">
+        <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-7xl overflow-hidden">
+          {quest.thumbnailUrl ? (
+            <img src={quest.thumbnailUrl} alt={quest.title} className="size-full object-cover" />
+          ) : (
+            "🦖"
+          )}
+        </div>
+      </Link>
 
       <div className="flex items-center justify-between gap-2 mb-2">
         <span

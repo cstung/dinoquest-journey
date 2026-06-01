@@ -318,7 +318,9 @@ function QuestDetail() {
           ) : (
             <>
               <h1 className="text-4xl">{quest.title}</h1>
-              <p className="text-lg text-muted-foreground leading-relaxed">{quest.description}</p>
+              <p className="text-lg text-muted-foreground leading-relaxed whitespace-pre-wrap break-words">
+                {quest.description}
+              </p>
             </>
           )}
 
