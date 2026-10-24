@@ -219,43 +219,43 @@ function eventText(ev: ActivityEv): {
   switch (ev.event_type) {
     case "quest_completed":
       return {
-        icon: "??",
+        icon: "✅",
         color: "bg-success/15 text-success-foreground",
         text: `Completed "${questTitle}" (+${formatXp(Number(ev.payload.xp ?? 0))} XP)`,
       };
     case "quest_cycle_created":
       return {
-        icon: "??",
+        icon: "🔁",
         color: "bg-info/15 text-info-foreground",
         text: `New cycle started for '${ev.payload.questTitle ?? questTitle}'`,
       };
     case "quest_missed":
       return {
-        icon: "?",
+        icon: "😢",
         color: "bg-destructive/15 text-destructive",
         text: `Missed '${ev.payload.questTitle ?? questTitle}' - streak broken`,
       };
     case "test_completed":
       return {
-        icon: "??",
+        icon: "🎬",
         color: "bg-info/15 text-info-foreground",
         text: `Scored ${score}% on "${testTitle}"`,
       };
     case "level_up":
       return {
-        icon: "??",
+        icon: "⭐",
         color: "bg-warning/15 text-warning-foreground",
         text: `Reached Level ${ev.payload.new_level ?? ev.payload.level ?? "new"}!`,
       };
     case "reward_claim_requested":
       return {
-        icon: "??",
+        icon: "🎁",
         color: "bg-pink/15 text-pink",
         text: `Claimed "${ev.payload.reward_title ?? "a reward"}" reward`,
       };
     case "xp_earned":
       return {
-        icon: "?",
+        icon: "⚡",
         color: "bg-primary/15 text-primary-dark",
         text: `${Number(ev.payload.delta ?? ev.payload.xp ?? 0) >= 0 ? "Earned" : "Spent"} ${formatXp(Math.abs(Number(ev.payload.delta ?? ev.payload.xp ?? 0)))} XP`,
       };
@@ -350,7 +350,7 @@ function KidProfilePage() {
     return rows.filter((row) => row.userId === targetId);
   }, [activityData?.items, userId]);
   const activity = useMemo<ActivityEv[]>(() => {
-    const normalize = (eventType: string): ActivityEv["event_type"] => {
+    const normalize = (eventType: string): ActivityEv["event_type"] | null => {
       const known = new Set<ActivityEv["event_type"]>([
         "quest_completed",
         "quest_cycle_created",
@@ -363,14 +363,18 @@ function KidProfilePage() {
       ]);
       return known.has(eventType as ActivityEv["event_type"])
         ? (eventType as ActivityEv["event_type"])
-        : "xp_earned";
+        : null;
     };
-    return allEventsForUser.slice(0, 8).map((row) => ({
-      id: row.id,
-      event_type: normalize(row.eventType),
-      created_at: row.createdAt,
-      payload: row.payload ?? {},
-    }));
+    // Unknown events (wall posts, moods...) used to fall through as a confusing "Earned 0 XP".
+    return allEventsForUser
+      .filter((row) => normalize(row.eventType) !== null)
+      .slice(0, 8)
+      .map((row) => ({
+        id: row.id,
+        event_type: normalize(row.eventType) as ActivityEv["event_type"],
+        created_at: row.createdAt,
+        payload: row.payload ?? {},
+      }));
   }, [allEventsForUser]);
   const stats = useMemo<Stats>(() => {
     const targetId = Number(userId);
@@ -572,7 +576,7 @@ function KidProfilePage() {
       {/* Birthday countdown */}
       {resolvedProfile.birthday && <BirthdayCountdown days={daysLeft!} />}
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* LEFT column */}
         <div className="lg:col-span-2 space-y-6">
           {/* Section 4 — XP & Level */}
@@ -869,7 +873,7 @@ function BioSection({ profile, isSelf }: { profile: ProfileData; isSelf: boolean
   return (
     <Card>
       <SectionHeader icon={<Star className="size-5" />} title="About Me" />
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <F label="Nickname">
           <div className="font-bold">{profile.nickname || "—"}</div>
         </F>
@@ -1303,7 +1307,7 @@ function ProfileSkeleton() {
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
       <Skeleton className="h-44 rounded-3xl" />
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <Skeleton className="h-40 rounded-3xl" />
           <Skeleton className="h-32 rounded-3xl" />

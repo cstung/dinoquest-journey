@@ -457,7 +457,7 @@ function Step2({
             }
             className={inputCls}
           />
-          <div className="grid sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {q.options.map((opt, oi) => (
               <label
                 key={oi}
@@ -548,7 +548,7 @@ function Step3({
       <Field label="Video Quiz Title (From Video)">
         <input className={inputCls} value={title} readOnly />
       </Field>
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Difficulty">
           <input className={inputCls} value={difficultyLabel(difficulty)} readOnly />
         </Field>

@@ -716,7 +716,7 @@ function FamilyDashboardPage() {
 
       <StatsSnapshot stats={stats ?? {}} />
 
-      <div className="grid lg:grid-cols-[1fr_360px] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4">
         <MoodCheckin
           myMood={myMood}
           onSubmit={(m) => {
@@ -726,7 +726,7 @@ function FamilyDashboardPage() {
         <FamilyMoodPanel members={members} moods={moods} />
       </div>
 
-      <div className="grid lg:grid-cols-[1fr_360px] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6">
         {/* LEFT — wall */}
         <div className="space-y-4 min-w-0">
           <ShoutoutComposer
@@ -919,7 +919,7 @@ function StatsSnapshot({ stats }: { stats: DashboardStats }) {
       </div>
       <div className="min-w-0">
         <div className="font-display font-black text-xl tabular-nums leading-none">{value}</div>
-        <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground truncate">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground leading-tight mt-0.5">
           {label}
         </div>
       </div>
@@ -963,6 +963,15 @@ function StatsSnapshot({ stats }: { stats: DashboardStats }) {
 // Mood
 // ============================================================
 
+const CORE_MOODS = [
+  { label: "Happy", value: "/mood-icons/beaming-face-with-smiling-eyes.svg" },
+  { label: "Excited", value: "/mood-icons/star-struck.svg" },
+  { label: "Okay", value: "/mood-icons/neutral-face.svg" },
+  { label: "Tired", value: "/mood-icons/sleepy-face.svg" },
+  { label: "Sad", value: "/mood-icons/crying-face.svg" },
+  { label: "Angry", value: "/mood-icons/angry-face.svg" },
+];
+
 function MoodCheckin({
   myMood,
   onSubmit,
@@ -971,11 +980,8 @@ function MoodCheckin({
   onSubmit: (m: string) => void;
 }) {
   const [editing, setEditing] = useState(!isMoodIconValue(myMood));
-  const [choices, setChoices] = useState(() => MOOD_ICON_OPTIONS.slice(0, 5));
-
-  useEffect(() => {
-    setChoices(pickMoodIcons());
-  }, []);
+  // Six everyday feelings with words underneath: easier for kids than a random set of faces.
+  const choices = CORE_MOODS;
   useEffect(() => {
     if (!isMoodIconValue(myMood)) setEditing(true);
   }, [myMood]);
@@ -984,7 +990,6 @@ function MoodCheckin({
     onSubmit(m);
     setEditing(false);
   };
-  const shuffle = () => setChoices(pickMoodIcons());
 
   return (
     <div
@@ -994,30 +999,22 @@ function MoodCheckin({
       {editing ? (
         <>
           <div className="font-display font-extrabold text-sm">How are you feeling today?</div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 w-full">
             {choices.map((m) => (
               <button
                 key={m.value}
                 aria-label={m.label}
                 onClick={() => pick(m.value)}
                 className={cn(
-                  "size-12 rounded-2xl grid place-items-center bg-secondary/60 hover:scale-110 transition shadow-pop-sm border-2 p-1.5",
+                  "rounded-2xl flex flex-col items-center gap-1 py-2 bg-secondary/60 hover:scale-105 transition shadow-pop-sm border-2 text-xs font-bold",
                   myMood === m.value ? "border-primary bg-primary/15" : "border-foreground/5",
                 )}
                 style={{ ["--shadow-color" as any]: "oklch(0 0 0 / 0.06)" }}
               >
-                <MoodIcon value={m.value} label={m.label} sizeClass="size-8" />
+                <MoodIcon value={m.value} label={m.label} sizeClass="size-10" />
+                {m.label}
               </button>
             ))}
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={shuffle}
-              className="rounded-xl font-bold"
-            >
-              Next
-            </Button>
           </div>
         </>
       ) : (
@@ -1078,10 +1075,6 @@ function FamilyMoodPanel({
       </div>
     </div>
   );
-}
-
-function pickMoodIcons() {
-  return [...MOOD_ICON_OPTIONS].sort(() => Math.random() - 0.5).slice(0, 5);
 }
 
 function moodIconLabel(value: string | null) {

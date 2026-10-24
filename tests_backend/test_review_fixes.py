@@ -179,3 +179,9 @@ def test_thumbnail_data_urls_are_stored_as_files(client: TestClient) -> None:
         return moved
 
     assert asyncio.run(_legacy()) >= 1
+
+
+def test_api_datetimes_are_utc_with_z(client: TestClient) -> None:
+    family_id, _, _ = _setup_family_with_child(client)
+    created_at = client.get(f"/api/families/{family_id}/members").json()[0]["joinedAt"]
+    assert created_at.endswith("Z"), created_at  # naive values were read as local time in browsers

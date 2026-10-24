@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { cn } from "@/lib/utils";
 import { useFamilies, useFamilyActivity } from "@/hooks/use-families";
 import { apiRequest } from "@/lib/api";
+import { friendlyEventText } from "@/lib/events";
 
 function DinoLogo() {
   return (
@@ -54,7 +55,7 @@ function FamilySwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-2 rounded-2xl border-2 border-border bg-card px-3 py-2 hover:bg-secondary/50 transition-colors max-w-[260px]">
+        <button className="flex items-center gap-2 rounded-2xl border-2 border-border bg-card px-3 py-2 hover:bg-secondary/50 transition-colors max-w-[260px] min-w-0 w-full">
           <span
             className="size-3 rounded-full shrink-0"
             style={{ backgroundColor: active?.colorHex }}
@@ -134,7 +135,7 @@ function NotificationDrawer() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-bold text-sm">{event.eventType.replaceAll("_", " ")}</p>
+                    <p className="font-bold text-sm">{friendlyEventText(event.eventType)}</p>
                   </div>
                   <p className="text-sm text-muted-foreground">{event.username ?? "System"}</p>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -194,12 +195,14 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
       <div className="flex items-center justify-between gap-3 px-4 sm:px-6 h-16">
-        <DinoLogo />
+        <div className="shrink-0">
+          <DinoLogo />
+        </div>
         <div className="hidden md:flex flex-1 justify-center">
           <FamilySwitcher />
         </div>
-        <div className="flex items-center gap-2">
-          <div className="md:hidden">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="md:hidden min-w-0">
             <FamilySwitcher />
           </div>
           <NotificationDrawer />

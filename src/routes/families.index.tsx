@@ -97,7 +97,7 @@ function FamiliesLobby() {
           You are not in any family yet.
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {families.map((f) => {
             const isActive = f.id === activeFamilyId;
             return (

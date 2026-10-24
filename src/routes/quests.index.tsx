@@ -286,7 +286,7 @@ function QuestsPage() {
         </div>
       )}
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {quests.map((q) => (
           <QuestCard
             key={q.id}
@@ -355,7 +355,7 @@ function QuestCard({
   return (
     <div className="rounded-2xl bg-card border-2 border-border p-5 card-pop flex flex-col">
       <Link to="/quests/$questId" params={{ questId: String(quest.id) }} className="block mb-3">
-        <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-7xl overflow-hidden">
+        <div className="aspect-video rounded-2xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-6xl overflow-hidden">
           {quest.thumbnailUrl ? (
             <img src={quest.thumbnailUrl} alt={quest.title} className="size-full object-cover" />
           ) : (
@@ -382,7 +382,7 @@ function QuestCard({
       </div>
 
       <Link to="/quests/$questId" params={{ questId: String(quest.id) }} className="block">
-        <h3 className="font-display font-extrabold text-lg leading-tight mb-1 hover:underline">
+        <h3 className="font-display font-extrabold text-lg leading-tight mb-1 hover:underline line-clamp-3">
           {quest.title}
         </h3>
       </Link>

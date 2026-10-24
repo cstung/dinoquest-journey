@@ -11,17 +11,18 @@ import {
 import { CalendarDays, Egg, Gift, Users, Shield } from "lucide-react";
 import { useAuthStore } from "@/store";
 
+// Kids reach for quests and rewards most, so those sit in the thumb bar; labels stay one short word.
 const primary = [
   { icon: Home, label: "Home", to: "/" },
   { icon: ListChecks, label: "Quests", to: "/quests" },
-  { icon: Video, label: "Video Quiz", to: "/tests" },
-  { icon: Trophy, label: "Leaderboard", to: "/leaderboard" },
+  { icon: Gift, label: "Rewards", to: "/rewards" },
+  { icon: Video, label: "Quiz", to: "/tests" },
 ] as const;
 
 const more = [
-  { icon: CalendarDays, label: "Calendar", to: "/calendar" },
+  { icon: Trophy, label: "Leaderboard", to: "/leaderboard" },
   { icon: Egg, label: "Pets", to: "/pets" },
-  { icon: Gift, label: "Rewards", to: "/rewards" },
+  { icon: CalendarDays, label: "Calendar", to: "/calendar" },
   { icon: Users, label: "Families", to: "/families" },
 ] as const;
 
@@ -41,19 +42,19 @@ export function BottomNav() {
               key={item.to}
               to={item.to}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 text-[10px] font-extrabold uppercase tracking-wide",
+                "flex flex-col items-center justify-center gap-1 text-xs font-extrabold",
                 active ? "text-primary" : "text-muted-foreground"
               )}
             >
-              <Icon className="size-5" strokeWidth={2.5} />
+              <Icon className="size-6" strokeWidth={2.5} />
               {item.label}
             </Link>
           );
         })}
         <Sheet>
           <SheetTrigger asChild>
-            <button className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-extrabold uppercase tracking-wide text-muted-foreground">
-              <Menu className="size-5" strokeWidth={2.5} />
+            <button className="flex flex-col items-center justify-center gap-1 text-xs font-extrabold text-muted-foreground">
+              <Menu className="size-6" strokeWidth={2.5} />
               More
             </button>
           </SheetTrigger>

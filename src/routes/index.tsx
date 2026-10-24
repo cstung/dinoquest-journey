@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { getQuestCategoryLabel } from "@/lib/quest-categories";
 import { formatXp } from "@/lib/utils";
+import { friendlyEventText } from "@/lib/events";
 
 export const Route = createFileRoute("/")({ component: HomePage });
 
@@ -37,7 +38,7 @@ function eventLabelWithXp(eventType: string, payload: Record<string, unknown> | 
     const reason = typeof payload.label === "string" ? payload.label : "Parent reward";
     return `${reason} (+${xp.toLocaleString()} XP)`;
   }
-  const normalized = eventType.replaceAll("_", " ");
+  const normalized = friendlyEventText(eventType);
   const xpDelta = resolveXpDelta(eventType, payload);
   if (xpDelta === null) return normalized;
   const sign = xpDelta >= 0 ? "+" : "-";
@@ -355,7 +356,7 @@ function HomePage() {
           />
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xl">Up next</h2>
@@ -366,7 +367,7 @@ function HomePage() {
                 View all <ArrowRight className="size-4" />
               </Link>
             </div>
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {pendingQuests.slice(0, 3).map((q) => (
                 <Link
                   key={q.id}
@@ -499,7 +500,7 @@ function HomePage() {
                         </span>
                       </div>
                       <span className="text-xs text-muted-foreground shrink-0">
-                        {new Date(a.createdAt).toLocaleTimeString()}
+                        {new Date(a.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                       </span>
                     </li>
                   ))}

@@ -268,11 +268,16 @@ function TestCard({
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <StatusBadge status={test.status} />
-              <AvailabilityBadge availabilityStatus={test.availabilityStatus} />
               <DifficultyBadge difficulty={test.difficulty} />
-              <span className="text-[10px] font-bold uppercase text-muted-foreground">
-                Subtitles: {subtitleSourceLabel(test.subtitleSource)}
-              </span>
+              {/* Availability and subtitle source are setup details only parents act on. */}
+              {isParent && (
+                <>
+                  <AvailabilityBadge availabilityStatus={test.availabilityStatus} />
+                  <span className="text-[10px] font-bold uppercase text-muted-foreground">
+                    Subtitles: {subtitleSourceLabel(test.subtitleSource)}
+                  </span>
+                </>
+              )}
             </div>
             <h3 className="font-display font-extrabold text-lg leading-tight">{test.title}</h3>
             <p className="text-sm text-muted-foreground flex items-center gap-3 mt-1">

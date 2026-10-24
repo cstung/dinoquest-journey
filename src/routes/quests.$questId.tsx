@@ -175,7 +175,7 @@ function QuestDetail() {
         <ArrowLeft className="size-4" /> Back to Quests
       </Link>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
           <span className="inline-block text-xs font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-md bg-primary/15 text-primary-dark">
             {getQuestCategoryLabel(quest.category)}
@@ -246,7 +246,7 @@ function QuestDetail() {
                 rows={3}
                 className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 font-bold"
               />
-              <div className="grid sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
@@ -325,7 +325,7 @@ function QuestDetail() {
             </>
           )}
 
-          <div className="aspect-square rounded-3xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-8xl overflow-hidden">
+          <div className="aspect-video lg:aspect-square rounded-3xl bg-gradient-to-br from-primary-light to-info/30 grid place-items-center text-8xl overflow-hidden">
             {(editMode ? thumbnailUrl : quest.thumbnailUrl) ? (
               <img
                 src={editMode ? (thumbnailUrl ?? "") : (quest.thumbnailUrl ?? "")}
@@ -399,13 +399,13 @@ function QuestDetail() {
               {quest.assignedMembers.map((m) => (
                 <li key={m.userId} className="flex items-center gap-3">
                   <span
-                    className="size-8 rounded-xl grid place-items-center text-xs font-extrabold text-white"
+                    className="size-8 shrink-0 rounded-xl grid place-items-center text-xs font-extrabold text-white"
                     style={{ backgroundColor: m.avatarColor ?? "#9ca3af" }}
                   >
                     {m.username.slice(0, 1).toUpperCase()}
                   </span>
-                  <span className="flex-1 font-bold text-sm">{m.username}</span>
-                  <span className="text-xs font-bold text-muted-foreground capitalize">
+                  <span className="flex-1 min-w-0 truncate font-bold text-sm">{m.username}</span>
+                  <span className="shrink-0 text-xs font-bold text-muted-foreground capitalize">
                     {getStatusLabel(m.status as QuestStatus, isParent)}
                   </span>
                 </li>

@@ -9,6 +9,15 @@ import { apiRequest } from "@/lib/api";
 import { ActionResultModal, type ActionResultVariant } from "@/components/action-result-modal";
 import { formatXp } from "@/lib/utils";
 
+const SPECIES = [
+  { name: "T-Rex", emoji: "🦖" },
+  { name: "Long-neck", emoji: "🦕" },
+  { name: "Dragon", emoji: "🐉" },
+  { name: "Croc", emoji: "🐊" },
+  { name: "Turtle", emoji: "🐢" },
+  { name: "Lizard", emoji: "🦎" },
+] as const;
+
 export const Route = createFileRoute("/pets")({ component: PetsPage });
 
 const STAGE_EMOJI: Record<string, string> = {
@@ -29,7 +38,7 @@ function PetsPage() {
   const role = useFamilyStore((s) => s.activeFamilyRole);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [newName, setNewName] = useState("");
-  const [newSpecies, setNewSpecies] = useState("Unknown");
+  const [newSpecies, setNewSpecies] = useState<string>(SPECIES[0].name);
   const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const queryClient = useQueryClient();
 
@@ -108,25 +117,48 @@ function PetsPage() {
 
       {!active ? (
         <div className="rounded-2xl border-2 border-border bg-card p-6 space-y-4">
-          <h2 className="text-xl">Create your first pet</h2>
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Pet name"
-            className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-info"
-          />
-          <input
-            value={newSpecies}
-            onChange={(e) => setNewSpecies(e.target.value)}
-            placeholder="Species"
-            className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 font-bold focus:outline-none focus:border-info"
-          />
+          <h2 className="text-xl">Hatch your first dino! 🥚</h2>
+          <div>
+            <p className="text-sm font-bold text-muted-foreground mb-2">1. Pick your dino</p>
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Dino type">
+              {SPECIES.map((sp) => (
+                <button
+                  key={sp.name}
+                  type="button"
+                  role="radio"
+                  aria-checked={newSpecies === sp.name}
+                  onClick={() => setNewSpecies(sp.name)}
+                  className={cn(
+                    "rounded-2xl border-2 p-3 flex flex-col items-center gap-1 font-bold text-sm transition-colors",
+                    newSpecies === sp.name
+                      ? "border-primary bg-primary/10 text-primary-dark"
+                      : "border-border bg-background",
+                  )}
+                >
+                  <span className="text-4xl" aria-hidden>
+                    {sp.emoji}
+                  </span>
+                  {sp.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="block">
+            <span className="block text-sm font-bold text-muted-foreground mb-2">2. Give it a name</span>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g. Rexy"
+              maxLength={80}
+              className="w-full rounded-xl border-2 border-border bg-background px-4 py-3 text-lg font-bold focus:outline-none focus:border-info"
+            />
+          </label>
           <button
             onClick={create}
-            disabled={createPet.isPending}
+            disabled={createPet.isPending || !newName.trim()}
             className="rounded-2xl bg-primary text-primary-foreground font-display font-extrabold uppercase px-6 py-3 btn-pop disabled:opacity-60"
           >
-            {createPet.isPending ? "Creating..." : "Create Pet"}
+            {createPet.isPending ? "Hatching..." : "Hatch my dino!"}
           </button>
         </div>
       ) : (
@@ -194,7 +226,7 @@ function PetsPage() {
                 ))}
             </div>
             {role === "parent" || role === "child" ? (
-              <div className="rounded-2xl border-2 border-border bg-card p-4 mt-4 grid sm:grid-cols-3 gap-2">
+              <div className="rounded-2xl border-2 border-border bg-card p-4 mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}

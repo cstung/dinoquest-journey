@@ -18,6 +18,7 @@ import {
   useUpdateMemberRole,
   useUpdateFamily,
 } from "@/hooks/use-families";
+import { friendlyEventText } from "@/lib/events";
 
 export const Route = createFileRoute("/families/$familyId")({ component: FamilyDetail });
 
@@ -479,7 +480,7 @@ function FamilyDetail() {
                 </span>
               </div>
               <span className="text-xs text-muted-foreground">
-                {new Date(a.createdAt).toLocaleTimeString()}
+                {new Date(a.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
               </span>
             </li>
           ))}
@@ -515,7 +516,7 @@ function FamilyDetail() {
                 </span>
               </div>
               <span className="text-xs text-muted-foreground">
-                {new Date(a.createdAt).toLocaleTimeString()}
+                {new Date(a.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
               </span>
             </li>
           ))}
@@ -601,7 +602,7 @@ function formatFamilyEvent(eventType: string, payload: Record<string, unknown> |
       return `received a direct reward (+${xp.toLocaleString()} XP)`;
     }
     default:
-      return eventType.replaceAll("_", " ");
+      return friendlyEventText(eventType);
   }
 }
 

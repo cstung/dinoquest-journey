@@ -103,7 +103,7 @@ function Row({ entry, max }: { entry: LeaderboardEntry; max: number }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1.5">
           <span className="font-display font-extrabold truncate">{entry.username}</span>
-          <span className="text-[10px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/20 text-warning">
+          <span className="shrink-0 whitespace-nowrap text-[10px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/20 text-warning">
             LVL {entry.level}
           </span>
         </div>

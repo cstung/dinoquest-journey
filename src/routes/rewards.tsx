@@ -113,7 +113,7 @@ function RewardsPage() {
       </div>
 
       {isParent && (
-        <div className="rounded-2xl border-2 border-border bg-card p-4 grid sm:grid-cols-4 gap-2">
+        <div className="rounded-2xl border-2 border-border bg-card p-4 grid grid-cols-1 sm:grid-cols-4 gap-2">
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
@@ -167,7 +167,7 @@ function RewardsPage() {
         </div>
       )}
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {rewards.map((r) => (
           <RewardCard
             key={r.id}
@@ -323,7 +323,7 @@ function RewardCard({
 
   return (
     <div className="rounded-2xl bg-card border-2 border-border p-5 card-pop flex flex-col">
-      <div className="aspect-square rounded-2xl bg-gradient-to-br from-pink/20 to-purple/20 grid place-items-center text-7xl mb-3">
+      <div className="aspect-[4/3] rounded-2xl bg-gradient-to-br from-pink/20 to-purple/20 grid place-items-center text-6xl mb-3 overflow-hidden">
         {displayThumbnail ? (
           <img
             src={displayThumbnail}
@@ -393,7 +393,7 @@ function RewardCard({
       ) : (
         <>
           <div className="min-h-[3.25rem]">
-            <h3 className="font-display font-extrabold text-lg truncate" title={reward.title}>
+            <h3 className="font-display font-extrabold text-lg leading-tight line-clamp-2" title={reward.title}>
               {reward.title}
             </h3>
           </div>
@@ -405,6 +405,20 @@ function RewardCard({
             />
           </div>
         </>
+      )}
+      {!isParent && !affordable && (
+        // Show kids how close they are instead of a flat "no".
+        <div className="mt-3" aria-label={`${formatXp(reward.xpCost - balance)} XP more needed`}>
+          <div className="h-3 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-warning"
+              style={{ width: `${Math.min(100, Math.round((balance / reward.xpCost) * 100))}%` }}
+            />
+          </div>
+          <p className="mt-1 text-xs font-bold text-muted-foreground">
+            {formatXp(reward.xpCost - balance)} XP more to go!
+          </p>
+        </div>
       )}
       <div className="flex items-center justify-between flex-wrap gap-2 mt-4 pt-3 border-t border-border">
         <span className="font-display font-extrabold text-warning text-lg min-w-0">
@@ -480,8 +494,8 @@ function RewardCard({
                 : hasPendingClaim
                   ? "Pending"
                   : affordable
-                    ? "Claim"
-                    : "Not enough"}
+                    ? "Get it! 🎁"
+                    : "Keep going"}
             </button>
           </>
         )}
