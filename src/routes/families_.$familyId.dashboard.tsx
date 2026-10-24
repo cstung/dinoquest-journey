@@ -1391,6 +1391,7 @@ function WallPostCard({
   const canDelete = currentUserId === post.authorId || isParent;
   const canBoost =
     isParent &&
+    !post.isBoosted &&
     (post.postType === "activity" || post.postType === "boost") &&
     post.authorId !== currentUserId;
   const badge = BADGE_META[post.postType];

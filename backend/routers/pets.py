@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
+from backend.datetime_utils import ensure_utc
 from backend.dependencies import get_active_membership
 from backend.models import ActivityLog, FamilyMember, Pet, User
 from backend.realtime import emit_family_event
@@ -171,7 +172,8 @@ async def feed_pet(
 
     now = datetime.now(timezone.utc)
     if pet.last_fed_at is not None:
-        next_feed_at = pet.last_fed_at + timedelta(hours=FEED_COOLDOWN_HOURS)
+        # SQLite returns naive UTC datetimes; comparing with an aware `now` raised TypeError (500).
+        next_feed_at = ensure_utc(pet.last_fed_at) + timedelta(hours=FEED_COOLDOWN_HOURS)
         if now < next_feed_at:
             raise HTTPException(
                 status_code=400,

@@ -44,19 +44,36 @@ async def get_leaderboard(
         )
         raw = rows.all()
     else:
+        # Aggregate each table separately: joining both on user_id alone multiplies rows
+        # (2 families -> 2x2 rows) and double-counts XP.
+        levels = (
+            select(
+                UserFamilyLevel.user_id.label("user_id"),
+                func.max(UserFamilyLevel.level).label("level"),
+                func.sum(UserFamilyLevel.xp_balance).label("xp"),
+                func.max(UserFamilyLevel.current_streak).label("streak"),
+            )
+            .group_by(UserFamilyLevel.user_id)
+            .subquery()
+        )
+        colors = (
+            select(FamilyMember.user_id.label("user_id"), func.min(FamilyMember.avatar_color).label("color"))
+            .group_by(FamilyMember.user_id)
+            .subquery()
+        )
+        xp = func.coalesce(levels.c.xp, 0)
         rows = await db.execute(
             select(
                 User.id,
                 User.username,
-                func.min(FamilyMember.avatar_color),
-                func.coalesce(func.max(UserFamilyLevel.level), 1),
-                func.coalesce(func.sum(UserFamilyLevel.xp_balance), 0),
-                func.coalesce(func.max(UserFamilyLevel.current_streak), 0),
+                colors.c.color,
+                func.coalesce(levels.c.level, 1),
+                xp,
+                func.coalesce(levels.c.streak, 0),
             )
-            .join(FamilyMember, FamilyMember.user_id == User.id)
-            .outerjoin(UserFamilyLevel, UserFamilyLevel.user_id == User.id)
-            .group_by(User.id, User.username)
-            .order_by(func.coalesce(func.sum(UserFamilyLevel.xp_balance), 0).desc(), User.username.asc())
+            .join(colors, colors.c.user_id == User.id)
+            .outerjoin(levels, levels.c.user_id == User.id)
+            .order_by(xp.desc(), User.username.asc())
             .limit(limit)
         )
         raw = rows.all()

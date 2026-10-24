@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
@@ -29,7 +29,9 @@ from backend.models import (
     UserFamilyLevel,
     XpEvent,
 )
+from backend.datetime_utils import vn_today
 from backend.realtime import emit_family_event
+from backend.services.xp_engine import XpReason, award_xp
 from backend.schemas.dashboard import (
     BoostCreate,
     CommentCreate,
@@ -58,7 +60,8 @@ POST_TYPES = {"activity", "shoutout", "photo", "boost", "weekly_recap"}
 
 
 def _today() -> date:
-    return datetime.now(timezone.utc).date()
+    # Family "today" is Vietnam's day; a UTC date flips at 07:00 local time.
+    return vn_today()
 
 
 def _display_name(member: FamilyMember | None, user: User | None) -> str:
@@ -501,18 +504,49 @@ async def boost_post(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     post = await _require_post(db, parent_member.family_id, post_id)
-    post.is_boosted = True
+    author = (
+        await db.get(FamilyMember, (parent_member.family_id, post.author_id)) if post.author_id is not None else None
+    )
+    if not author or author.role != "child":
+        raise HTTPException(status_code=400, detail="Only kids' posts can be boosted")
+
+    # The UI promises the kid "+N XP", so the boost must actually award it, and only once per post.
+    claimed = await db.execute(
+        update(FamilyWallPost)
+        .where(FamilyWallPost.id == post.id, FamilyWallPost.is_boosted.is_(False))
+        .values(is_boosted=True)
+        .execution_options(synchronize_session=False)
+    )
+    if claimed.rowcount != 1:
+        raise HTTPException(status_code=409, detail="This post was already boosted")
+
+    note = body.message.strip()[:100] or "Family Yard boost"
+    await award_xp(
+        family_id=parent_member.family_id,
+        user_id=author.user_id,
+        delta=body.xp,
+        reason=XpReason.PARENT_REWARD,
+        source_id=post.id,
+        note=note,
+        db=db,
+    )
     db.add(
         ActivityLog(
             family_id=parent_member.family_id,
             user_id=parent_member.user_id,
             event_type="wall_post_boosted",
-            payload={"post_id": post_id, "xp": body.xp, "message": body.message},
+            payload={"post_id": post_id, "xp": body.xp, "message": body.message, "child_id": author.user_id},
             is_audit=False,
         )
     )
     await db.commit()
     await _emit(parent_member.family_id, "wall_post_boosted", {"postId": post_id, "xp": body.xp})
+    await emit_family_event(
+        parent_member.family_id,
+        "xp_earned",
+        {"userId": author.user_id, "delta": body.xp, "reason": XpReason.PARENT_REWARD.value, "label": note},
+    )
+    await emit_family_event(parent_member.family_id, "leaderboard_update", {"userId": author.user_id})
 
 
 @router.get("/{family_id}/wall-posts/{post_id}/reactions/{emoji}/users", response_model=ReactionUsersOut)
@@ -588,7 +622,12 @@ async def save_mood(
             )
         )
     await db.commit()
-    await _emit(membership.family_id, "mood_checkin", {"userId": membership.user_id, "mood": body.mood})
+    # Private moods must not be broadcast to the rest of the family.
+    await _emit(
+        membership.family_id,
+        "mood_checkin",
+        {"userId": membership.user_id, "mood": body.mood if body.shared else None},
+    )
 
 
 @router.get("/{family_id}/pins", response_model=PinsOut)
@@ -744,6 +783,7 @@ async def dashboard_stats(
                 select(func.coalesce(func.sum(XpEvent.delta), 0)).where(
                     XpEvent.family_id == membership.family_id,
                     XpEvent.created_at >= since,
+                    XpEvent.delta > 0,  # earned this week; spending (rewards, level-ups) isn't negative "family XP"
                 )
             )
         ).scalar_one()

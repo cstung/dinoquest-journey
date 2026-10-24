@@ -185,3 +185,34 @@ def test_api_datetimes_are_utc_with_z(client: TestClient) -> None:
     family_id, _, _ = _setup_family_with_child(client)
     created_at = client.get(f"/api/families/{family_id}/members").json()[0]["joinedAt"]
     assert created_at.endswith("Z"), created_at  # naive values were read as local time in browsers
+
+
+def test_second_pet_feed_reports_cooldown_not_500(client: TestClient) -> None:
+    family_id, _, child_client = _setup_family_with_child(client)
+    pet = child_client.post(f"/api/families/{family_id}/pets", json={"name": "Rexy", "species": "T-Rex"})
+    assert pet.status_code == 201, pet.text
+    url = f"/api/families/{family_id}/pets/{pet.json()['id']}/feed"
+    assert child_client.post(url).status_code == 200
+    again = child_client.post(url)
+    assert again.status_code == 400, again.text
+
+
+
+def test_global_leaderboard_does_not_double_count_multi_family_xp(client: TestClient) -> None:
+    family_id, child_user_id, child_client = _setup_family_with_child(client)
+    family2 = client.post("/api/families", json={"name": "Second Family", "motto": "QA"}).json()["id"]
+    code = client.post(f"/api/families/{family2}/invites", json={"role": "child"}).json()["code"]
+    assert child_client.post("/api/join", json={"code": code}).status_code == 200
+
+    from backend.database import SessionLocal
+    from backend.services.xp_engine import XpReason, award_xp
+
+    async def _seed() -> None:
+        async with SessionLocal() as db:
+            for fid in (family_id, family2):
+                await award_xp(db=db, family_id=fid, user_id=child_user_id, delta=10, reason=XpReason.PARENT_REWARD)
+            await db.commit()
+
+    asyncio.run(_seed())
+    board = client.get(f"/api/families/{family_id}/leaderboard", params={"scope": "global"}).json()["items"]
+    assert next(i["xp"] for i in board if i["userId"] == child_user_id) == 20
