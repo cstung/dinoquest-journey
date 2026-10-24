@@ -17,6 +17,7 @@ from backend.schemas.reward import (
     RewardOut,
     RewardUpdate,
 )
+from backend.services.media import store_thumbnail
 from backend.services.xp_engine import XpReason, award_xp
 
 router = APIRouter()
@@ -49,7 +50,7 @@ async def create_reward(
         created_by=parent_member.user_id,
         title=body.title,
         description=body.description,
-        thumbnail_url=body.thumbnail_url,
+        thumbnail_url=store_thumbnail(body.thumbnail_url),
         xp_cost=body.xp_cost,
         is_active=True,
     )
@@ -97,7 +98,7 @@ async def update_reward(
     if "description" in body.model_fields_set:
         item.description = body.description
     if "thumbnail_url" in body.model_fields_set:
-        item.thumbnail_url = body.thumbnail_url
+        item.thumbnail_url = store_thumbnail(body.thumbnail_url)
     if "xp_cost" in body.model_fields_set and body.xp_cost is not None:
         item.xp_cost = body.xp_cost
     if "is_active" in body.model_fields_set and body.is_active is not None:

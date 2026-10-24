@@ -609,16 +609,27 @@ async def list_pins(
     ).scalars().all()
     members = await _family_members(db, membership.family_id)
     total_members = len(members)
+    acks_by_pin: dict[int, list[int]] = {pin.id: [] for pin in pins}
+    if pins:
+        ack_rows = await db.execute(
+            select(FamilyPinAcknowledgement.pin_id, FamilyPinAcknowledgement.user_id).where(
+                FamilyPinAcknowledgement.pin_id.in_(list(acks_by_pin))
+            )
+        )
+        for pin_id, user_id in ack_rows.all():
+            acks_by_pin[pin_id].append(user_id)
+
+    async def _member(user_id: int) -> tuple[FamilyMember | None, User | None]:
+        # Ex-members are rare; only they fall back to a per-user lookup.
+        return members[user_id] if user_id in members else (None, await db.get(User, user_id))
+
     out: list[PinOut] = []
     for pin in pins:
-        ack_rows = await db.execute(
-            select(FamilyPinAcknowledgement.user_id).where(FamilyPinAcknowledgement.pin_id == pin.id)
-        )
         acknowledgements = []
-        for user_id in ack_rows.scalars().all():
-            member, user = members.get(user_id, (None, await db.get(User, user_id)))
+        for user_id in acks_by_pin[pin.id]:
+            member, user = await _member(user_id)
             acknowledgements.append(PinAcknowledgementOut(user_id=user_id, nickname=_display_name(member, user)))
-        creator_member, creator_user = members.get(pin.created_by_user_id, (None, await db.get(User, pin.created_by_user_id)))
+        creator_member, creator_user = await _member(pin.created_by_user_id)
         out.append(
             PinOut(
                 id=pin.id,

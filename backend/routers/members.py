@@ -115,6 +115,12 @@ async def remove_member(
     family = await db.get(Family, family_id)
     if not family or family.is_deleted:
         raise HTTPException(status_code=404, detail="Family not found")
+    if (
+        user_id == family.owner_id
+        and current_user.id != family.owner_id
+        and current_user.global_role != "superadmin"
+    ):
+        raise HTTPException(status_code=403, detail="Only the owner or a superadmin can remove the family owner")
 
     await db.delete(target)
 

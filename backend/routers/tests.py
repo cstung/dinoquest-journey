@@ -75,7 +75,10 @@ def _subtitle_http_error(exc: SubtitleUnavailableError) -> HTTPException:
 def _parse_cursor(cursor: str | None) -> datetime | None:
     if not cursor:
         return None
-    dt = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
+    try:
+        dt = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid cursor") from exc
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
@@ -467,10 +470,13 @@ async def list_tests(
             TestAssignment.user_id == membership.user_id
         )
 
-    rows = await db.execute(base.order_by(VideoTest.created_at.desc(), VideoTest.id.desc()).limit(limit + 1))
+    # Status is derived per test in Python, so filtering must happen before slicing.
+    # ponytail: scans every test in the family when filtering; push into SQL if families get huge.
+    filtering = bool(status_filter) and status_filter != "all"
+    ordered = base.order_by(VideoTest.created_at.desc(), VideoTest.id.desc())
+    rows = await db.execute(ordered if filtering else ordered.limit(limit + 1))
     all_tests = rows.scalars().all()
-    has_more = len(all_tests) > limit
-    page_tests = all_tests[:limit]
+    page_tests = all_tests if filtering else all_tests[:limit]
 
     status_by_test = await _assignment_status_for_tests(
         test_ids=[test.id for test in page_tests],
@@ -513,6 +519,16 @@ async def list_tests(
                 continue
         items.append(item)
 
+    filtered_total: int | None = None
+    if filtering:
+        filtered_total = len(items)
+        has_more = len(items) > limit
+        items = items[:limit]
+        kept_ids = {item.id for item in items}
+        page_tests = [test for test in page_tests if test.id in kept_ids]
+    else:
+        has_more = len(all_tests) > limit
+
     total_query = select(func.count(VideoTest.id)).where(
         VideoTest.family_id == membership.family_id,
         VideoTest.status != "deleted",
@@ -528,7 +544,7 @@ async def list_tests(
                 TestAssignment.user_id == membership.user_id,
             )
         )
-    total = int((await db.execute(total_query)).scalar_one())
+    total = filtered_total if filtered_total is not None else int((await db.execute(total_query)).scalar_one())
 
     next_cursor = None
     if has_more and page_tests:
@@ -625,6 +641,8 @@ async def submit_attempt(
         raise HTTPException(status_code=403, detail="Only children can submit tests")
 
     test = await _validate_test_access(test_id=test_id, membership=membership, db=db)
+    if _availability_status(test.status) != "active":
+        raise HTTPException(status_code=400, detail="Test is inactive")
     assignment = (
         await db.execute(
             select(TestAssignment).where(

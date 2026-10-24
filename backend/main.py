@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -12,6 +11,7 @@ from sqlalchemy import text
 
 from backend.config import get_settings
 from backend.database import engine
+from backend.services.media import data_dir, migrate_inline_thumbnails
 from backend.services.quest_scheduler import run_quest_scheduler
 from backend.routers import (
     activity_log,
@@ -59,13 +59,9 @@ def create_app() -> FastAPI:
     app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(ws.router, tags=["ws"])
 
-    data_dir = Path(settings.db_path).expanduser()
-    if data_dir == Path(":memory:"):
-        static_dir = Path("./data").resolve()
-    else:
-        static_dir = data_dir.resolve().parent
+    static_dir = data_dir()
     # Only expose upload subfolders; the data dir itself holds the SQLite DB.
-    for sub in ("avatars", "wall_uploads"):
+    for sub in ("avatars", "wall_uploads", "thumbnails"):
         (static_dir / sub).mkdir(parents=True, exist_ok=True)
         app.mount(f"/uploads/{sub}", StaticFiles(directory=str(static_dir / sub)), name=f"uploads_{sub}")
 
@@ -81,6 +77,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def start_scheduler() -> None:
+        await migrate_inline_thumbnails()
         # Catch up missed cycles and overdue assignments before serving traffic.
         await run_quest_scheduler()
         scheduler.add_job(

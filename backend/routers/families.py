@@ -48,7 +48,16 @@ async def list_families(
         ]
 
     rows = await db.execute(
-        select(Family, FamilyMember.role, func.count(FamilyMember.user_id).over(partition_by=Family.id).label("member_count"))
+        select(
+            Family,
+            FamilyMember.role,
+            # Correlated count: a window over the user-filtered join always counted 1.
+            select(func.count(FamilyMember.user_id))
+            .where(FamilyMember.family_id == Family.id)
+            .correlate(Family)
+            .scalar_subquery()
+            .label("member_count"),
+        )
         .join(FamilyMember, FamilyMember.family_id == Family.id)
         .where(
             FamilyMember.user_id == current_user.id,

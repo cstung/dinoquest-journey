@@ -11,3 +11,4 @@ uvicorn_s4_err.log
 *.pyc
 __pycache__
 tests_backend/__pycache__
+backups

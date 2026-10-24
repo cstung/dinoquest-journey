@@ -7,6 +7,11 @@ RUN npm ci
 
 COPY . .
 
+# Production build for Node (not the Cloudflare Worker target); `vite preview` serves it
+# with the same /api, /uploads and /ws proxy as dev, minus the dev server's HMR overhead.
+ENV NODE_BUILD=1
+RUN npm run build
+
 EXPOSE 5007
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5007"]
+CMD ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", "5007"]

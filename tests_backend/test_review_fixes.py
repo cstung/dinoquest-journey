@@ -117,3 +117,65 @@ def test_on_time_request_survives_deadline_until_parent_reviews(client: TestClie
     )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "completed"
+
+
+def test_family_list_counts_all_members(client: TestClient) -> None:
+    family_id, _, child_client = _setup_family_with_child(client)
+    families = child_client.get("/api/families").json()
+    assert next(f for f in families if f["id"] == family_id)["memberCount"] == 1  # superadmin is not a member
+    invite = client.post(f"/api/families/{family_id}/invites", json={"role": "child"}).json()["code"]
+    other = TestClient(client.app)
+    r = other.post(
+        "/api/auth/register",
+        json={"username": f"count_kid_{family_id}", "password": "Password12345!", "inviteCode": invite},
+    )
+    assert r.status_code == 201, r.text
+    families = child_client.get("/api/families").json()
+    assert next(f for f in families if f["id"] == family_id)["memberCount"] == 2
+
+
+def test_parent_status_filter_is_applied_before_paging(client: TestClient) -> None:
+    family_id, child_user_id, child_client = _setup_family_with_child(client)
+    target = _create_once_quest(client, family_id, child_user_id)
+    assert child_client.post(f"/api/families/{family_id}/quests/{target}/complete").status_code == 200
+    for _ in range(3):
+        _create_once_quest(client, family_id, child_user_id)
+
+    page = client.get(f"/api/families/{family_id}/quests?status=pending_approval&limit=1").json()
+    assert [item["id"] for item in page["items"]] == [target]
+    assert page["total"] == 1
+    assert client.get(f"/api/families/{family_id}/quests?cursor=garbage").status_code == 422
+
+
+_PNG_1PX = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
+
+
+def test_thumbnail_data_urls_are_stored_as_files(client: TestClient) -> None:
+    family_id, _, _ = _setup_family_with_child(client)
+    r = client.post(
+        f"/api/families/{family_id}/rewards",
+        json={"title": "Sticker", "xpCost": 5, "thumbnailUrl": _PNG_1PX},
+    )
+    assert r.status_code == 201, r.text
+    url = r.json()["thumbnailUrl"]
+    assert url.startswith("/uploads/thumbnails/") and url.endswith(".png")
+    assert client.get(url).status_code == 200
+
+    from backend.database import SessionLocal
+    from backend.models import RewardItem
+    from backend.services.media import migrate_inline_thumbnails
+
+    async def _legacy() -> int:
+        async with SessionLocal() as db:
+            item = await db.get(RewardItem, r.json()["id"])
+            item.thumbnail_url = _PNG_1PX
+            await db.commit()
+        moved = await migrate_inline_thumbnails()
+        async with SessionLocal() as db:
+            assert (await db.get(RewardItem, r.json()["id"])).thumbnail_url.startswith("/uploads/thumbnails/")
+        return moved
+
+    assert asyncio.run(_legacy()) >= 1

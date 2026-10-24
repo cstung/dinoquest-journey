@@ -13,22 +13,26 @@ const allowedHosts = (process.env.VITE_ALLOWED_HOSTS || "questv3.diinooo.blog")
   .map((host) => host.trim())
   .filter(Boolean);
 
+const proxy = {
+  "/api": apiProxyTarget,
+  "/uploads": apiProxyTarget,
+  "/ws": {
+    target: wsProxyTarget,
+    ws: true,
+  },
+};
+
 // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
 // @cloudflare/vite-plugin builds from this — wrangler.jsonc main alone is insufficient.
 export default defineConfig({
+  // NODE_BUILD=1 builds a Node server (for `vite preview` in Docker) instead of a Cloudflare Worker.
+  ...(process.env.NODE_BUILD ? { cloudflare: false as const } : {}),
   tanstackStart: {
     server: { entry: "server" },
   },
   vite: {
-    server: {
-      allowedHosts,
-      proxy: {
-        "/api": apiProxyTarget,
-        "/ws": {
-          target: wsProxyTarget,
-          ws: true,
-        },
-      },
-    },
+    server: { allowedHosts, proxy },
+    // `vite preview` serves the production build; it needs the same proxy and host rules.
+    preview: { allowedHosts, proxy },
   },
 });

@@ -22,6 +22,7 @@ from backend.schemas.quest import (
     QuestResolveIn,
     QuestUpdate,
 )
+from backend.services.media import store_thumbnail
 from backend.services.quest_scheduler import compute_cycle_due_at, compute_next_occurrence
 from backend.services.streak_service import update_streak
 from backend.services.xp_engine import XpReason, award_xp
@@ -32,7 +33,10 @@ router = APIRouter()
 def _parse_cursor(cursor: str | None) -> datetime | None:
     if not cursor:
         return None
-    dt = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
+    try:
+        dt = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid cursor") from exc
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
@@ -230,28 +234,33 @@ async def list_quests(
         if status_filter in {"pending", "pending_approval", "completed", "missed"}:
             base = base.where(QuestAssignment.status == status_filter)
 
-    rows = await db.execute(base.order_by(Quest.created_at.desc(), Quest.id.desc()).limit(limit + 1))
+    # Parent status is derived from all assignees in Python, so it must be filtered before slicing.
+    # ponytail: scans every quest in the family when a parent filters; push into SQL if families get huge.
+    parent_filter = membership.role != "child" and status_filter in {"pending", "pending_approval", "completed", "missed"}
+    ordered = base.order_by(Quest.created_at.desc(), Quest.id.desc())
+    rows = await db.execute(ordered if parent_filter else ordered.limit(limit + 1))
     quests = rows.scalars().all()
-    has_more = len(quests) > limit
-    page_quests = quests[:limit]
 
     assigned_by_quest = await _load_latest_assigned_members_for_quests(
         family_id=membership.family_id,
-        quest_ids=[quest.id for quest in page_quests],
+        quest_ids=[quest.id for quest in (quests if parent_filter else quests[:limit])],
         db=db,
     )
 
-    items: list[QuestItemOut] = []
-    for quest in page_quests:
-        item = _quest_item_from_assigned(
-            quest,
-            assigned_by_quest.get(quest.id, []),
-            membership,
-        )
-        if membership.role != "child" and status_filter in {"pending", "pending_approval", "completed", "missed"}:
-            if item.status != status_filter:
-                continue
-        items.append(item)
+    pairs = [
+        (quest, _quest_item_from_assigned(quest, assigned_by_quest.get(quest.id, []), membership))
+        for quest in (quests if parent_filter else quests[:limit])
+    ]
+    if parent_filter:
+        pairs = [(quest, item) for quest, item in pairs if item.status == status_filter]
+        has_more = len(pairs) > limit
+        total_override: int | None = len(pairs)
+    else:
+        has_more = len(quests) > limit
+        total_override = None
+    pairs = pairs[:limit]
+    page_quests = [quest for quest, _ in pairs]
+    items = [item for _, item in pairs]
 
     total_q = select(func.count(Quest.id)).where(Quest.family_id == membership.family_id)
     if search:
@@ -289,7 +298,7 @@ async def list_quests(
             total_q = total_q.where(QuestAssignment.status == status_filter)
         if search:
             total_q = total_q.where(func.lower(Quest.title).like(term))
-    total = int((await db.execute(total_q)).scalar_one())
+    total = total_override if total_override is not None else int((await db.execute(total_q)).scalar_one())
 
     next_cursor = None
     if has_more and page_quests:
@@ -321,7 +330,7 @@ async def create_quest(
         description=body.description,
         category=body.category,
         difficulty=body.difficulty,
-        thumbnail_url=body.thumbnail_url,
+        thumbnail_url=store_thumbnail(body.thumbnail_url),
         xp_reward=body.xp_reward,
         due_date=due_date_utc,
         frequency=frequency_value,
@@ -447,7 +456,7 @@ async def update_quest(
     if body.difficulty is not None:
         quest.difficulty = body.difficulty
     if "thumbnail_url" in body.model_fields_set:
-        quest.thumbnail_url = body.thumbnail_url
+        quest.thumbnail_url = store_thumbnail(body.thumbnail_url)
     if body.xp_reward is not None:
         quest.xp_reward = body.xp_reward
     if "due_date" in body.model_fields_set:
