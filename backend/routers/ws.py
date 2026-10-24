@@ -35,7 +35,8 @@ async def family_room(websocket: WebSocket, family_id: int) -> None:
             await websocket.close(code=4404, reason="Family not found")
             return
 
-        membership = (
+        # Mirror get_active_membership: superadmins act as parents in every family.
+        membership = user.global_role == "superadmin" or (
             await db.execute(
                 select(FamilyMember).where(
                     FamilyMember.family_id == family_id,

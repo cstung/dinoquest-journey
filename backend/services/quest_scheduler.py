@@ -108,7 +108,8 @@ async def _mark_overdue_assignments(
         select(QuestAssignment, Quest)
         .join(Quest, Quest.id == QuestAssignment.quest_id)
         .where(
-            QuestAssignment.status.in_(["pending", "pending_approval"]),
+            # pending_approval was requested before the deadline; the parent decides it, not the clock.
+            QuestAssignment.status == "pending",
             QuestAssignment.cycle_due_at.is_not(None),
             QuestAssignment.cycle_due_at <= now_utc,
         )
@@ -127,7 +128,7 @@ async def _mark_overdue_assignments(
             sa_update(QuestAssignment)
             .where(
                 QuestAssignment.id == assignment.id,
-                QuestAssignment.status.in_(["pending", "pending_approval"]),
+                QuestAssignment.status == "pending",
                 QuestAssignment.cycle_due_at.is_not(None),
                 QuestAssignment.cycle_due_at <= now_utc,
             )

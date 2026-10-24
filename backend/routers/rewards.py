@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
@@ -337,12 +337,15 @@ async def resolve_reward_claim(
         raise HTTPException(status_code=404, detail="Reward claim not found")
     claim, reward, user = result
 
-    if claim.status != "pending":
+    resolved = await db.execute(
+        sa_update(RewardClaim)
+        .where(RewardClaim.id == claim.id, RewardClaim.status == "pending")
+        .values(status=body.decision, resolved_at=datetime.now(timezone.utc), resolved_by=parent_member.user_id)
+        .execution_options(synchronize_session=False)
+    )
+    if resolved.rowcount != 1:
         raise HTTPException(status_code=400, detail="Claim already resolved")
-
-    claim.status = body.decision
-    claim.resolved_at = datetime.now(timezone.utc)
-    claim.resolved_by = parent_member.user_id
+    await db.refresh(claim)
     xp_delta = 0
     if body.decision == "approved":
         level_row = (

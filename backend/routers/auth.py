@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
 from backend.database import get_db
 from backend.dependencies import get_current_user
-from backend.models import Family, FamilyInvite, FamilyMember, User
+from backend.models import Family, FamilyMember, User
 from backend.schemas.auth import LoginRequest, RegisterRequest, UserOut, WsTokenOut
+from backend.services.invite_service import claim_invite, resolve_invite
 from backend.security import create_access_token, create_ws_token, hash_password, verify_password
 
 router = APIRouter()
@@ -61,7 +61,7 @@ def _apply_auth_cookie(response: Response, token: str) -> None:
         value=token,
         httponly=True,
         secure=is_prod,
-        samesite="none" if is_prod else "lax",
+        samesite="lax",
         max_age=86400 * settings.access_token_expire_days,
         domain=cookie_domain,
         path="/",
@@ -88,41 +88,25 @@ async def register(
     user_count = (await db.execute(select(func.count()).select_from(User))).scalar_one()
     is_first_user = user_count == 0
 
+    invite = None
+    if not is_first_user:
+        invite_code = (body.invite_code or "").replace(" ", "")
+        if not invite_code:
+            raise HTTPException(status_code=422, detail="inviteCode is required")
+        # Validate before hashing so bad codes are cheap to reject and rate-limited.
+        invite, _ = await resolve_invite(db, code=invite_code)
+
     user = User(
         username=body.username,
         email=body.email,
-        hashed_password=hash_password(body.password),
+        hashed_password=await run_in_threadpool(hash_password, body.password),
         global_role="superadmin" if is_first_user else "user",
         is_active=True,
     )
     db.add(user)
     await db.flush()
 
-    if not is_first_user:
-        invite_code = (body.invite_code or "").replace(" ", "")
-        if not invite_code:
-            raise HTTPException(status_code=422, detail="inviteCode is required")
-
-        invite = (
-            await db.execute(select(FamilyInvite).where(FamilyInvite.code == invite_code))
-        ).scalar_one_or_none()
-        if not invite:
-            raise HTTPException(status_code=404, detail="Invalid invite code")
-        if invite.revoked:
-            raise HTTPException(status_code=400, detail="This invite code has been revoked")
-
-        expires_at = invite.expires_at
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at < datetime.now(timezone.utc):
-            raise HTTPException(status_code=400, detail="This invite code has expired")
-        if invite.used_by is not None:
-            raise HTTPException(status_code=400, detail="This invite code has already been used")
-
-        family = await db.get(Family, invite.family_id)
-        if not family or family.is_deleted:
-            raise HTTPException(status_code=404, detail="Family not found")
-
+    if invite is not None:
         db.add(
             FamilyMember(
                 family_id=invite.family_id,
@@ -130,8 +114,7 @@ async def register(
                 role=invite.role,
             )
         )
-        invite.used_by = user.id
-        invite.used_at = datetime.now(timezone.utc)
+        await claim_invite(db, invite, user.id)
 
     await db.commit()
     await db.refresh(user)
@@ -147,7 +130,7 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
     user = (await db.execute(select(User).where(User.username == body.username))).scalar_one_or_none()
-    if not user or not verify_password(body.password, user.hashed_password):
+    if not user or not await run_in_threadpool(verify_password, body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account disabled")
@@ -166,7 +149,7 @@ async def logout(response: Response) -> Response:
         path="/",
         httponly=True,
         secure=settings.environment == "production",
-        samesite="none" if settings.environment == "production" else "lax",
+        samesite="lax",
     )
     response.status_code = status.HTTP_204_NO_CONTENT
     return response

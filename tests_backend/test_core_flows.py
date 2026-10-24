@@ -24,25 +24,11 @@ def _register_with_invite(client: TestClient, username: str, email: str, invite_
 
 
 def _setup_family_with_child(client: TestClient) -> tuple[int, int, TestClient]:
-    idx = next(_seq)
-    parent = _register(client, f"parent_test_{idx}", f"parent_test_{idx}@example.com")
-    assert parent["globalRole"] == "superadmin"
-    family = client.post("/api/families", json={"name": "Test Family", "motto": "QA"})
-    assert family.status_code == 201, family.text
-    family_id = family.json()["id"]
+    # Only the first user in the session DB becomes superadmin, so reuse the helper that
+    # tolerates an already-registered superadmin instead of registering a new one each time.
+    from test_quest_recurrence_hardening import _setup_family_with_child as setup
 
-    invite = client.post(f"/api/families/{family_id}/invites", json={"role": "child"})
-    assert invite.status_code == 201, invite.text
-    code = invite.json()["code"]
-
-    child_client = TestClient(client.app)
-    _register_with_invite(child_client, f"child_test_{idx}", f"child_test_{idx}@example.com", code)
-    child_user_id = (
-        child_client.get(f"/api/families/{family_id}/members")
-        .json()
-    )
-    child_user_id = next(m["userId"] for m in child_user_id if m["role"] == "child")
-    return family_id, child_user_id, child_client
+    return setup(client)
 
 
 def test_auth_invite_join_flow(client: TestClient) -> None:
@@ -86,7 +72,7 @@ def test_auth_invite_join_flow(client: TestClient) -> None:
         },
     )
     assert joined_twice.status_code == 400, joined_twice.text
-    assert joined_twice.json()["detail"] == "This invite code has already been used"
+    assert joined_twice.json()["detail"] == "Invalid or expired invite code"
 
 
 def test_testmaker_reopen_revokes_and_reawards_xp(client: TestClient) -> None:
@@ -191,6 +177,11 @@ def test_websocket_receives_reward_claim_resolution_event(client: TestClient) ->
     quest_id = quest.json()["id"]
     complete = child_client.post(f"/api/families/{family_id}/quests/{quest_id}/complete")
     assert complete.status_code == 200, complete.text
+    approved = client.post(
+        f"/api/families/{family_id}/quest-assignments/{complete.json()['assignmentId']}/resolve",
+        json={"decision": "approve"},
+    )
+    assert approved.status_code == 200, approved.text
 
     reward = client.post(
         f"/api/families/{family_id}/rewards",

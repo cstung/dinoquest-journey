@@ -713,81 +713,70 @@ async def resolve_quest_assignment(
         assignment.cycle_due_at = normalized_cycle_due
         await db.flush()
     cycle_due_at = _as_utc(assignment.cycle_due_at)
-    is_overdue = cycle_due_at is not None and now_utc > cycle_due_at
+    # Lateness is judged by when the child asked, not when the parent got around to reviewing.
+    requested_at = _as_utc(assignment.completion_requested_at) or now_utc
+    is_overdue = cycle_due_at is not None and requested_at > cycle_due_at
 
     if is_overdue:
-        overdue_transition = await db.execute(
-            sa_update(QuestAssignment)
-            .where(
-                QuestAssignment.id == assignment.id,
-                QuestAssignment.status == "pending_approval",
-            )
-            .values(
-                status="missed",
-                completed_at=None,
-                completion_requested_at=None,
-                reviewed_at=now_utc,
-                reviewed_by=parent_member.user_id,
-                xp_awarded=0,
-            )
-            .execution_options(synchronize_session=False)
+        new_values = dict(status="missed", completed_at=None, completion_requested_at=None, xp_awarded=0)
+    elif body.decision == "approve":
+        new_values = dict(status="completed", completed_at=now_utc, xp_awarded=quest.xp_reward)
+    else:
+        new_values = dict(status="pending", completed_at=None, completion_requested_at=None, xp_awarded=0)
+
+    # Conditional UPDATE: a double-click or two parents approving at once can only win once.
+    transition = await db.execute(
+        sa_update(QuestAssignment)
+        .where(
+            QuestAssignment.id == assignment.id,
+            QuestAssignment.status == "pending_approval",
         )
-        if overdue_transition.rowcount == 1:
-            await update_streak(
-                user_id=assignment.user_id,
-                family_id=assignment.family_id,
-                completed_on_time=False,
-                db=db,
-                completed_at=now_utc,
-            )
-            db.add(
-                ActivityLog(
-                    family_id=assignment.family_id,
-                    user_id=parent_member.user_id,
-                    event_type="quest_missed",
-                    payload={"questId": quest.id, "questTitle": quest.title, "userId": assignment.user_id},
-                    is_audit=True,
-                )
-            )
-            await db.commit()
-            await db.refresh(assignment)
-            await emit_family_event(
-                assignment.family_id,
-                "quest_missed",
-                {"questTitle": quest.title, "userId": assignment.user_id},
-            )
-            await emit_family_event(
-                assignment.family_id,
-                "quest_updated",
-                {"action": "deadline_expired", "questId": quest.id, "assignmentId": assignment.id, "userId": assignment.user_id},
-            )
-            return QuestCompleteOut(
-                quest_id=quest.id,
-                assignment_id=assignment.id,
-                xp_awarded=0,
-                xp_balance=0,
-                level=0,
-                status=assignment.status,
-            )
-
-    if assignment.status != "pending_approval":
+        .values(reviewed_at=now_utc, reviewed_by=parent_member.user_id, **new_values)
+        .execution_options(synchronize_session=False)
+    )
+    if transition.rowcount != 1:
         raise HTTPException(status_code=400, detail="Quest assignment is not pending approval")
+    await db.refresh(assignment)
 
-    assignment.reviewed_at = now_utc
-    assignment.reviewed_by = parent_member.user_id
-
-    if body.decision == "approve":
-        assignment.status = "completed"
-        assignment.completed_at = now_utc
-        assignment.xp_awarded = quest.xp_reward
-        completion_base = _as_utc(assignment.completion_requested_at) or now_utc
+    if is_overdue:
         await update_streak(
             user_id=assignment.user_id,
             family_id=assignment.family_id,
-            completed_on_time=True,
+            completed_on_time=False,
             db=db,
-            completed_at=completion_base,
+            completed_at=now_utc,
         )
+        db.add(
+            ActivityLog(
+                family_id=assignment.family_id,
+                user_id=parent_member.user_id,
+                event_type="quest_missed",
+                payload={"questId": quest.id, "questTitle": quest.title, "userId": assignment.user_id},
+                is_audit=True,
+            )
+        )
+        await db.commit()
+        await emit_family_event(
+            assignment.family_id,
+            "quest_missed",
+            {"questTitle": quest.title, "userId": assignment.user_id},
+        )
+        await emit_family_event(
+            assignment.family_id,
+            "quest_updated",
+            {"action": "deadline_expired", "questId": quest.id, "assignmentId": assignment.id, "userId": assignment.user_id},
+        )
+        return QuestCompleteOut(
+            quest_id=quest.id,
+            assignment_id=assignment.id,
+            xp_awarded=0,
+            xp_balance=0,
+            level=0,
+            status=assignment.status,
+        )
+
+    if body.decision == "approve":
+        # award_xp creates the level row, so it must run before update_streak (which skips missing rows).
         level_row = await award_xp(
             family_id=assignment.family_id,
             user_id=assignment.user_id,
@@ -795,6 +784,13 @@ async def resolve_quest_assignment(
             reason=XpReason.QUEST_COMPLETE,
             source_id=assignment.id,
             db=db,
+        )
+        await update_streak(
+            user_id=assignment.user_id,
+            family_id=assignment.family_id,
+            completed_on_time=True,
+            db=db,
+            completed_at=requested_at,
         )
         db.add(
             ActivityLog(
@@ -815,10 +811,6 @@ async def resolve_quest_assignment(
         level = level_row.level
         event_action = "completion_approved"
     else:
-        assignment.status = "pending"
-        assignment.completed_at = None
-        assignment.completion_requested_at = None
-        assignment.xp_awarded = 0
         current_level_row = (
             await db.execute(
                 select(UserFamilyLevel).where(

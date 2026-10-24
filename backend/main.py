@@ -64,8 +64,10 @@ def create_app() -> FastAPI:
         static_dir = Path("./data").resolve()
     else:
         static_dir = data_dir.resolve().parent
-    static_dir.mkdir(parents=True, exist_ok=True)
-    app.mount("/uploads", StaticFiles(directory=str(static_dir)), name="uploads")
+    # Only expose upload subfolders; the data dir itself holds the SQLite DB.
+    for sub in ("avatars", "wall_uploads"):
+        (static_dir / sub).mkdir(parents=True, exist_ok=True)
+        app.mount(f"/uploads/{sub}", StaticFiles(directory=str(static_dir / sub)), name=f"uploads_{sub}")
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
@@ -652,6 +652,17 @@ async def submit_attempt(
     if attempt.submitted_at is not None:
         raise HTTPException(status_code=400, detail="Attempt already submitted")
 
+    submitted_at = datetime.now(timezone.utc)
+    # Claim the attempt atomically so a double submit cannot award XP twice.
+    claimed = await db.execute(
+        sa_update(TestAttempt)
+        .where(TestAttempt.id == attempt.id, TestAttempt.submitted_at.is_(None))
+        .values(submitted_at=submitted_at)
+        .execution_options(synchronize_session=False)
+    )
+    if claimed.rowcount != 1:
+        raise HTTPException(status_code=400, detail="Attempt already submitted")
+
     question_rows = await db.execute(
         select(TestQuestion)
         .where(TestQuestion.test_id == test.id)
@@ -688,11 +699,11 @@ async def submit_attempt(
     xp_earned = int(round(test.max_xp * (score_pct / 100)))
     attempt.score_raw = correct
     attempt.score_pct = round(score_pct, 2)
-    attempt.submitted_at = datetime.now(timezone.utc)
+    attempt.submitted_at = submitted_at
     attempt.xp_earned = xp_earned
 
     assignment.status = "completed"
-    assignment.completed_at = datetime.now(timezone.utc)
+    assignment.completed_at = submitted_at
     assignment.xp_earned = xp_earned
 
     level_row = await award_xp(
@@ -1003,12 +1014,19 @@ async def resolve_reopen_request(
         raise HTTPException(status_code=404, detail="Reopen request not found")
 
     reopen, attempt, assignment = result
-    if reopen.status != "pending":
+    resolved = await db.execute(
+        sa_update(TestReopenRequest)
+        .where(TestReopenRequest.id == reopen.id, TestReopenRequest.status == "pending")
+        .values(
+            status="approved" if body.decision == "approve" else "rejected",
+            resolved_at=datetime.now(timezone.utc),
+            resolved_by=parent_member.user_id,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if resolved.rowcount != 1:
         raise HTTPException(status_code=400, detail="Reopen request already resolved")
-
-    reopen.status = "approved" if body.decision == "approve" else "rejected"
-    reopen.resolved_at = datetime.now(timezone.utc)
-    reopen.resolved_by = parent_member.user_id
+    await db.refresh(reopen)
 
     xp_delta = 0
     if body.decision == "approve":

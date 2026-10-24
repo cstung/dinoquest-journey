@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from backend.dependencies import get_current_user, require_parent
-from backend.models import ActivityLog, Family, FamilyInvite, FamilyMember, JoinRequest, User
+from backend.models import ActivityLog, FamilyMember, JoinRequest, User
 from backend.realtime import emit_family_event
+from backend.services.invite_service import claim_invite, resolve_invite
 from backend.schemas.join_request import (
     JoinBody,
     JoinDecision,
@@ -32,31 +33,7 @@ async def join_family(
     if bool(code) == bool(token):
         raise HTTPException(status_code=400, detail="Provide either code or qr_token")
 
-    invite_lookup = code if code else token
-    if code:
-        invite = (
-            await db.execute(select(FamilyInvite).where(FamilyInvite.code == invite_lookup))
-        ).scalar_one_or_none()
-    else:
-        invite = (
-            await db.execute(select(FamilyInvite).where(FamilyInvite.qr_token == invite_lookup))
-        ).scalar_one_or_none()
-
-    if not invite:
-        raise HTTPException(status_code=404, detail="Invalid invite code")
-    if invite.revoked:
-        raise HTTPException(status_code=400, detail="This invite code has been revoked")
-    invite_expires_at = invite.expires_at
-    if invite_expires_at.tzinfo is None:
-        invite_expires_at = invite_expires_at.replace(tzinfo=timezone.utc)
-    if invite_expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="This invite code has expired")
-    if invite.used_by is not None:
-        raise HTTPException(status_code=400, detail="This invite code has already been used")
-
-    family = await db.get(Family, invite.family_id)
-    if not family or family.is_deleted:
-        raise HTTPException(status_code=404, detail="Family not found")
+    invite, family = await resolve_invite(db, code=code, qr_token=token)
 
     existing_member = (
         await db.execute(
@@ -79,8 +56,7 @@ async def join_family(
         )
     )
 
-    invite.used_by = current_user.id
-    invite.used_at = joined_at
+    await claim_invite(db, invite, current_user.id)
 
     db.add(
         ActivityLog(
